@@ -12,6 +12,11 @@ venv/
 
 # Outputs and reports
 outputs/
+reports/
+
+# Meeting docs and contributions (synced via Dropbox)
+docs/
+contrib/
 
 # Editor / local tooling
 .vscode/
