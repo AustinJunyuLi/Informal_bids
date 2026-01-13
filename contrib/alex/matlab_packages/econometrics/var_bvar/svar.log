@@ -1,0 +1,109 @@
+This is pdfTeX, Version 3.14159-14d (MiKTeX 1.20e) (preloaded format=latex 2000.9.12)  25 JUN 2001 22:27
+**svar.tex
+(svar.tex{pdftex.cfg}
+LaTeX2e <1999/06/01> patch level 1
+Babel <v3.6z> and hyphenation patterns for american, french, german, ngerman, n
+ohyphenation, loaded.
+(C:\texmf\tex\latex\base\article.cls
+Document Class: article 1999/01/07 v1.4a Standard LaTeX document class
+(C:\texmf\tex\latex\base\size10.clo
+File: size10.clo 1999/01/07 v1.4a Standard LaTeX file (size option)
+)
+\c@part=\count79
+\c@section=\count80
+\c@subsection=\count81
+\c@subsubsection=\count82
+\c@paragraph=\count83
+\c@subparagraph=\count84
+\c@figure=\count85
+\c@table=\count86
+\abovecaptionskip=\skip41
+\belowcaptionskip=\skip42
+\bibindent=\dimen102
+) (C:\texmf\tex\latex\graphics\graphicx.sty
+Package: graphicx 1999/02/16 v1.0f Enhanced LaTeX Graphics (DPC,SPQR)
+(C:\texmf\tex\latex\graphics\keyval.sty
+Package: keyval 1999/03/16 v1.13 key=value parser (DPC)
+\KV@toks@=\toks14
+)
+(C:\texmf\tex\latex\graphics\graphics.sty
+Package: graphics 1999/02/16 v1.0l Standard LaTeX Graphics (DPC,SPQR)
+ (C:\texmf\tex\latex\graphics\trig.sty
+Package: trig 1999/03/16 v1.09 sin cos tan (DPC)
+) (C:\texmf\tex\latex\config\graphics.cfg)
+Package graphics Info: Driver file: pdftex.def on input line 80.
+
+(C:\texmf\tex\latex\graphics\pdftex.def
+File: pdftex.def 1999/08/02 v0.02p graphics/color for pdftex
+\Gread@gobject=\count87
+))
+\Gin@req@height=\dimen103
+\Gin@req@width=\dimen104
+) (svar.aux)
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 8.
+LaTeX Font Info:    ... okay on input line 8.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 8.
+LaTeX Font Info:    ... okay on input line 8.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 8.
+LaTeX Font Info:    ... okay on input line 8.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 8.
+LaTeX Font Info:    ... okay on input line 8.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 8.
+LaTeX Font Info:    ... okay on input line 8.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 8.
+LaTeX Font Info:    ... okay on input line 8.
+
+(C:\texmf\tex\context\base\supp-pdf.tex (C:\texmf\tex\context\base\supp-mis.tex
+loading : Context Support Macros / Missing
+\protectiondepth=\count88
+\scratchcounter=\count89
+\scratchdimen=\dimen105
+\scratchskip=\skip43
+\scratchmuskip=\muskip10
+\scratchbox=\box26
+\scratchread=\read1
+\scratchwrite=\write3
+\nextbox=\box27
+\nextdepth=\dimen106
+\everyline=\toks15
+\!!counta=\count90
+\!!countb=\count91
+\recursecounter=\count92
+)
+loading : Context Support Macros / PDF
+\nofMPsegments=\count93
+\nofMParguments=\count94
+)
+LaTeX Font Info:    External font `cmex10' loaded for size
+(Font)              <7> on input line 24.
+LaTeX Font Info:    External font `cmex10' loaded for size
+(Font)              <5> on input line 24.
+ [1
+
+{pdftex.map
+Warning: pdflatex (file pdftex.map): invalid entry for `hlcbot8rn': too big val
+ue of SlantFont (850)
+
+Warning: pdflatex (file pdftex.map): invalid entry for `hlcbt8rn': too big valu
+e of SlantFont (850)
+
+Warning: pdflatex (file pdftex.map): invalid entry for `hlcrot8rn': too big val
+ue of SlantFont (850)
+
+Warning: pdflatex (file pdftex.map): invalid entry for `hlcrt8rn': too big valu
+e of SlantFont (850)
+
+Warning: pdflatex (file pdftex.map): invalid entry for `hlsbot8rn': too big val
+ue of SlantFont (850)
+
+Warning: pdflatex (file pdftex.map): invalid entry for `hlsbt8rn': too big valu
+e of SlantFont (850)
+
+Warning: pdflatex (file pdftex.map): invalid entry for `hlsrot8rn': too big val
+ue of SlantFont (850)
+
+Warning: pdflatex (file pdftex.map): invalid entry for `hlsrt8rn': too big valu
+e of SlantFont (850)
+}] (svar.aux) )<cmti10.pfb><cmr7.pfb><cmex10.pfb><cmsy10.pfb><cmmi7.pfb><cmmi10
+.pfb><cmr10.pfb><cmtt10.pfb><cmbx12.pfb>
+Output written on svar.pdf (1 page, 50803 bytes).

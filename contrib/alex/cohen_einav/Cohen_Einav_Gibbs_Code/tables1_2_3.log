@@ -1,0 +1,637 @@
+-------------------------------------------------------------------------------
+       log:  C:\Documents and Settings\leinav.ECON\My Documents\alma\AER_Revisi
+> on\Final version AER\Alma's version\tables1_2_3.log
+  log type:  text
+ opened on:   2 Jan 2007, 09:55:11
+
+. 
+. * construct variables for Table 1
+. 
+. gen XindAge = individualAge 
+
+. gen XindAge2 = individualAge^2
+
+. ren XindAge2 nXindAge2
+
+. gen XindFemale = individualGender
+
+. gen XindSingle     = individualMaritalStatus==1 /* to be omitted later */
+
+. gen XindMarried   = individualMaritalStatus==2
+
+. gen XindDivorced = individualMaritalStatus==3
+
+. gen XindWidower = individualMaritalStatus==4
+
+. gen XindMaritalNores = individualMaritalStatus==0
+
+. gen XindElementary = individualEducation==1
+
+. gen XindHighSchool = individualEducation==2 /* to be omitted later */
+
+. gen XindTechnical = individualEducation==3
+
+. gen XindAcademic = individualEducation==4
+
+. gen XindEduNores = individualEducation==0
+
+. gen XindEmigrant = (individualEmigrationYear>0)
+
+. 
+. gen XcarValue = carValue
+
+. gen XcarAge = carAge
+
+. gen XcarCommercial = carCommercial
+
+. gen XcarEngine = carEngineSize
+
+. 
+. gen XdrLicense = drivingLicenseYears
+
+. gen XdrLicense2 = drivingLicenseYears^2
+
+. ren XdrLicense2 nXdrLicense2
+
+. gen XdrGoodDriver = drivingGoodDriver
+
+. gen XdrAnyDriver = drivingAnyDriverClause
+
+. gen XdrSecondary = drivingSecondaryCar
+
+. gen XdrBusiness = drivingBusinessUse
+
+. gen XdrMileage = drivingEstimatedMileage /* to be omitted for most specs */
+(45378 missing values generated)
+
+. gen XdrHistLength = drivingHistoryLength
+
+. gen XdrHistClaims = drivingClaimHistory
+
+. 
+. gen Xyoung = youngAge>0
+
+. gen XyoungMale = youngGender==1 /* to be omitted later */
+
+. gen XyoungFemale = youngGender==2
+
+. gen XyoungAge1719 = youngAge==1 /* to be omitted later */
+
+. gen XyoungAge1921 = youngAge==2
+
+. gen XyoungAge2124 = youngAge==3
+
+. gen XyoungAge24p   = youngAge==4
+
+. gen XyoungExp1m    = youngExperience==1 /* to be omitted later */
+
+. gen XyoungExp13    = youngExperience==2
+
+. gen XyoungExp3p    = youngExperience==3
+
+. 
+. gen Xyr1 = policyCompanyYear==1 /* to be omitted later */
+
+. gen Xyr2 = policyCompanyYear==2
+
+. gen Xyr3 = policyCompanyYear==3
+
+. gen Xyr4 = policyCompanyYear==4
+
+. gen Xyr5 = policyCompanyYear==5
+
+. 
+. *************
+. /* Table 1 */
+. *************
+. sum X*
+
+    Variable |       Obs        Mean    Std. Dev.       Min        Max
+-------------+--------------------------------------------------------
+     XindAge |    105800    41.13711     12.3668      18.06      89.43
+  XindFemale |    105800    .3162854     .465028          0          1
+  XindSingle |    105800    .1427883    .3498585          0          1
+ XindMarried |    105800    .7788658    .4150127          0          1
+XindDivorced |    105800     .057155    .2321397          0          1
+-------------+--------------------------------------------------------
+ XindWidower |    105800    .0199244    .1397412          0          1
+XindMarita~s |    105800    .0012665    .0355661          0          1
+XindElemen~y |    105800    .0156805    .1242369          0          1
+XindHighSc~l |    105800    .2301512    .4209315          0          1
+XindTechni~l |    105800    .0533932    .2248173          0          1
+-------------+--------------------------------------------------------
+XindAcademic |    105800    .2327316    .4225746          0          1
+XindEduNores |    105800    .4680435    .4989801          0          1
+XindEmigrant |    105800    .3350945    .4720257          0          1
+   XcarValue |    105800    66958.41    37376.76       4000     617000
+     XcarAge |    105800    3.952146    2.872171          0         14
+-------------+--------------------------------------------------------
+XcarCommer~l |    105800    .0831664    .2761348          0          1
+  XcarEngine |    105800    1567.943    384.6802        700       5000
+  XdrLicense |    105800    18.17754    10.07452          0         63
+XdrGoodDri~r |    105800    .5479868    .4976943          0          1
+XdrAnyDriver |    105800    .7432136    .4368626          0          1
+-------------+--------------------------------------------------------
+XdrSecondary |    105800    .1506427     .357702          0          1
+ XdrBusiness |    105800     .081758     .273997          0          1
+  XdrMileage |     60422    14031.09    5890.498       1000      32200
+XdrHistLen~h |    105800    2.846919    .6052938          0          3
+XdrHistCla~s |    105800    .0597684    .1462761          0          2
+-------------+--------------------------------------------------------
+      Xyoung |    105800    .1915406    .3935153          0          1
+  XyoungMale |    105800    .1128544    .3164163          0          1
+XyoungFemale |    105800    .0786862    .2692496          0          1
+XyoungA~1719 |    105800    .0290737     .168014          0          1
+XyoungA~1921 |    105800    .0507089    .2194036          0          1
+-------------+--------------------------------------------------------
+XyoungA~2124 |    105800    .0894045    .2853281          0          1
+XyoungAge24p |    105800    .0223535    .1478311          0          1
+ XyoungExp1m |    105800     .041673    .1998417          0          1
+ XyoungExp13 |    105800    .0707372    .2563866          0          1
+ XyoungExp3p |    105800    .0791304    .2699435          0          1
+-------------+--------------------------------------------------------
+        Xyr1 |    105800     .207448    .4054811          0          1
+        Xyr2 |    105800    .2248677    .4174971          0          1
+        Xyr3 |    105800    .1943573     .395707          0          1
+        Xyr4 |    105800    .1783837    .3828373          0          1
+        Xyr5 |    105800    .1949433    .3961589          0          1
+
+. 
+. ren XdrMileage nXdrMileage
+
+. ren XindSingle nXindSingle
+
+. ren XindHighSchool nXindHighSchool
+
+. ren XyoungMale nXyoungMale
+
+. ren XyoungAge1719 nXyoungAge1719
+
+. ren XyoungExp1m nXyoungExp1m
+
+. ren Xyr1 nXyr1
+
+. 
+. ren nXindAge2 XindAge2
+
+. ren nXdrLicense2 XdrLicense2
+
+. replace XcarEngine = log(carEngineSize)
+(105800 real changes made)
+
+. replace XcarValue = log(carValue)
+(105800 real changes made)
+
+. 
+. * construct variables for Table 2
+. 
+. gen YmenuDedL = menuDeductible1
+
+. gen YmenuDedR = menuDeductible2
+
+. gen YmenuDedH = menuDeductible3
+
+. gen YmenuDedVH = menuDeductible4
+
+. gen YmenuPrL = menuPremium1
+
+. gen YmenuPrR = menuPremium2
+
+. gen YmenuPrH = menuPremium3
+
+. gen YmenuPrVH = menuPremium4
+
+. gen YmenuRatio = (menuPremium1-menuPremium2)/(menuDeductible2-menuDeductible1
+> )
+
+. gen YchoiceL = outcomeDeductibleChoice==1
+
+. gen YchoiceR = outcomeDeductibleChoice==2
+
+. gen YchoiceH = outcomeDeductibleChoice==3
+
+. gen YchoiceVH = outcomeDeductibleChoice==4
+
+. gen YstatusTrunc = policyStatus==1
+
+. gen YstatusCancl = policyStatus==2
+
+. gen YstatusExpir = policyStatus==3
+
+. gen Yduration = policyDuration
+
+. gen Yclaims = outcomeClaimsNumber
+
+. gen YclaimsIfL = outcomeClaimsNumber if YchoiceL==1
+(87001 missing values generated)
+
+. gen YclaimsIfR = outcomeClaimsNumber if YchoiceR==1
+(19960 missing values generated)
+
+. gen YclaimsIfH = outcomeClaimsNumber if YchoiceH==1
+(105146 missing values generated)
+
+. gen YclaimsIfVH = outcomeClaimsNumber if YchoiceVH==1
+(105293 missing values generated)
+
+. 
+. gen wYclaimsAdj = Yclaims/Yduration
+
+. gen wYclaimsAdjL = wYclaimsAdj if YchoiceL==1
+(87001 missing values generated)
+
+. gen wYclaimsAdjR = wYclaimsAdj if YchoiceR==1
+(19960 missing values generated)
+
+. gen wYclaimsAdjH = wYclaimsAdj if YchoiceH==1
+(105146 missing values generated)
+
+. gen wYclaimsAdjVH = wYclaimsAdj if YchoiceVH==1
+(105293 missing values generated)
+
+. 
+. **************
+. /* Table 2A */
+. **************
+. sum Y*
+
+    Variable |       Obs        Mean    Std. Dev.       Min        Max
+-------------+--------------------------------------------------------
+   YmenuDedL |    105800    875.4778     121.008    374.916    1039.11
+   YmenuDedR |    105800    1452.991    197.7853     624.86   1715.433
+   YmenuDedH |    105800    2608.019    352.9092   1124.748    3087.78
+  YmenuDedVH |    105800    3763.046    508.5295   1624.636   4460.127
+    YmenuPrL |    105800     3380.57     914.035   1324.707   19239.62
+-------------+--------------------------------------------------------
+    YmenuPrR |    105800    3189.217    862.2972   1249.724   18150.58
+    YmenuPrH |    105800    2790.565      754.51   1093.509   15881.76
+   YmenuPrVH |    105800    2551.373    689.8377   999.7792   14520.46
+  YmenuRatio |    105800    .3281684    .0584015   .2994502   1.803074
+    YchoiceL |    105800    .1776843    .3822486          0          1
+-------------+--------------------------------------------------------
+    YchoiceR |    105800    .8113422    .3912384          0          1
+    YchoiceH |    105800    .0061815    .0783793          0          1
+   YchoiceVH |    105800    .0047921     .069059          0          1
+YstatusTrunc |    105800    .1497543    .3568321          0          1
+YstatusCancl |    105800    .1432798    .3503596          0          1
+-------------+--------------------------------------------------------
+YstatusExpir |    105800     .706966    .4551561          0          1
+   Yduration |    105800    .8481878    .2811195   .0049669     1.0804
+     Yclaims |    105800     .208034     .476334          0          5
+  YclaimsIfL |     18799    .2796957    .5526518          0          5
+  YclaimsIfR |     85840    .1936976    .4580313          0          5
+-------------+--------------------------------------------------------
+  YclaimsIfH |       654    .1085627    .3440415          0          3
+ YclaimsIfVH |       507    .1065089    .3213377          0          2
+
+. sum wY* [aweight=Yduration]
+
+    Variable |     Obs      Weight        Mean   Std. Dev.       Min        Max
+-------------+-----------------------------------------------------------------
+ wYclaimsAdj |  105800  89738.2716    .2452688   .6566616          0   198.8182
+wYclaimsAdjL |   18799  17014.7647    .3090257   .6579083          0   92.64285
+wYclaimsAdjR |   85840  71764.2383    .2316892   .6564443          0   198.8182
+wYclaimsAdjH |     654  553.557462    .1282613   .6181152          0   126.3571
+wYclaimsA~VH |     507  405.711112    .1330996   .4978621          0   33.26087
+
+. 
+. **************
+. /* Table 2B */
+. **************
+. tab outcomeClaimsNumber outcomeDeductibleChoice if policyDuration>0.9
+
+ Number of |
+    claims |  Deductible choice (1-4, 1 is 'Low', 2 is
+    during |            'Regular', and so on)
+    policy |         1          2          3          4 |     Total
+-----------+--------------------------------------------+----------
+         0 |    11,929     49,281        412        299 |    61,921 
+         1 |     3,124      9,867         47         35 |    13,073 
+         2 |       565      1,261          4          2 |     1,832 
+         3 |        71        154          1          0 |       226 
+         4 |         6         11          0          0 |        17 
+         5 |         1          1          0          0 |         2 
+-----------+--------------------------------------------+----------
+     Total |    15,696     60,575        464        336 |    77,071 
+
+
+. 
+. ******************************
+. /* Table 3 - Poisson (Coef) */
+. ******************************
+. poisson outcomeClaimsNumber X*, exposure(policyDuration)
+
+Iteration 0:   log likelihood = -57746.884  
+Iteration 1:   log likelihood =  -57745.88  
+Iteration 2:   log likelihood =  -57745.88  
+
+Poisson regression                                Number of obs   =     105800
+                                                  LR chi2(35)     =    1896.53
+                                                  Prob > chi2     =     0.0000
+Log likelihood =  -57745.88                       Pseudo R2       =     0.0162
+
+------------------------------------------------------------------------------
+outcomeCla~r |      Coef.   Std. Err.      z    P>|z|     [95% Conf. Interval]
+-------------+----------------------------------------------------------------
+     XindAge |  -.0074074   .0052375    -1.41   0.157    -.0176727     .002858
+    XindAge2 |   .0000989   .0000536     1.85   0.065    -6.14e-06     .000204
+  XindFemale |  -.0455556   .0160842    -2.83   0.005    -.0770801   -.0140311
+ XindMarried |  -.1114956   .0216828    -5.14   0.000    -.1539932    -.068998
+XindDivorced |   .0716603   .0346026     2.07   0.038     .0038405    .1394802
+ XindWidower |   .0154664   .0527342     0.29   0.769    -.0878907    .1188235
+XindMarita~s |   .1347226   .1754712     0.77   0.443    -.2091946    .4786398
+XindElemen~y |   -.052215   .0549817    -0.95   0.342    -.1599772    .0555471
+XindTechni~l |   .0372879    .030757     1.21   0.225    -.0229948    .0975705
+XindAcademic |  -.0745209   .0196874    -3.79   0.000    -.1131075   -.0359344
+XindEduNores |   .0115578   .0184189     0.63   0.530    -.0245427    .0476582
+XindEmigrant |   .0210341   .0162635     1.29   0.196    -.0108417    .0529099
+   XcarValue |   .1227425   .0280893     4.37   0.000     .0676886    .1777964
+     XcarAge |   .0186833   .0042352     4.41   0.000     .0103825    .0269841
+XcarCommer~l |  -.1393735   .0326178    -4.27   0.000    -.2033032   -.0754439
+  XcarEngine |   .2972139   .0459187     6.47   0.000      .207215    .3872129
+  XdrLicense |  -.0204264   .0034182    -5.98   0.000     -.027126   -.0137267
+ XdrLicense2 |    .000221   .0000677     3.26   0.001     .0000882    .0003537
+XdrGoodDri~r |  -.0176272   .0190545    -0.93   0.355    -.0549733     .019719
+XdrAnyDriver |   .0563545   .0169183     3.33   0.001     .0231953    .0895137
+XdrSecondary |  -.0859369   .0209174    -4.11   0.000    -.1269344   -.0449395
+ XdrBusiness |   .1851596   .0292902     6.32   0.000     .1277519    .2425674
+XdrHistLen~h |  -.0527308    .010983    -4.80   0.000     -.074257   -.0312046
+XdrHistCla~s |    .657735   .0389938    16.87   0.000     .5813085    .7341614
+      Xyoung |   .5234793   .0360583    14.52   0.000     .4528064    .5941522
+XyoungFemale |  -.1474515   .0288361    -5.11   0.000    -.2039693   -.0909337
+XyoungA~1921 |   .0701266    .053173     1.32   0.187    -.0340906    .1743438
+XyoungA~2124 |  -.0266274   .0574056    -0.46   0.643    -.1391404    .0858855
+XyoungAge24p |  -.2082211   .0566747    -3.67   0.000    -.3193014   -.0971408
+ XyoungExp13 |  -.2415881   .0457839    -5.28   0.000     -.331323   -.1518533
+ XyoungExp3p |  -.2826609   .0532239    -5.31   0.000    -.3869779    -.178344
+        Xyr2 |  -.0888097   .0197624    -4.49   0.000    -.1275433   -.0500761
+        Xyr3 |  -.0689463   .0221832    -3.11   0.002    -.1124246    -.025468
+        Xyr4 |  -.1816781   .0232163    -7.83   0.000    -.2271813   -.1361749
+        Xyr5 |  -.5430909   .0280404   -19.37   0.000    -.5980491   -.4881328
+       _cons |  -4.353474    .274439   -15.86   0.000    -4.891365   -3.815584
+policyDura~n | (exposure)
+------------------------------------------------------------------------------
+
+. 
+. *****************************
+. /* Table 3 - Poisson (IRR) */
+. *****************************
+. poisson outcomeClaimsNumber X*, exposure(policyDuration) irr
+
+Iteration 0:   log likelihood = -57746.884  
+Iteration 1:   log likelihood =  -57745.88  
+Iteration 2:   log likelihood =  -57745.88  
+
+Poisson regression                                Number of obs   =     105800
+                                                  LR chi2(35)     =    1896.53
+                                                  Prob > chi2     =     0.0000
+Log likelihood =  -57745.88                       Pseudo R2       =     0.0162
+
+------------------------------------------------------------------------------
+outcomeCla~r |        IRR   Std. Err.      z    P>|z|     [95% Conf. Interval]
+-------------+----------------------------------------------------------------
+     XindAge |     .99262   .0051989    -1.41   0.157     .9824825    1.002862
+    XindAge2 |   1.000099   .0000536     1.85   0.065     .9999939    1.000204
+  XindFemale |   .9554665   .0153679    -2.83   0.005     .9258157    .9860668
+ XindMarried |   .8944953   .0193952    -5.14   0.000     .8572779    .9333285
+XindDivorced |    1.07429   .0371733     2.07   0.038     1.003848    1.149676
+ XindWidower |   1.015587   .0535561     0.29   0.769      .915861    1.126171
+XindMarita~s |   1.144219   .2007775     0.77   0.443     .8112374    1.613878
+XindElemen~y |   .9491247   .0521845    -0.95   0.342     .8521632    1.057119
+XindTechni~l |   1.037992   .0319255     1.21   0.225     .9772676    1.102489
+XindAcademic |    .928188   .0182736    -3.79   0.000     .8930547    .9647036
+XindEduNores |   1.011625   .0186331     0.63   0.530      .975756    1.048812
+XindEmigrant |   1.021257   .0166092     1.29   0.196     .9892168    1.054335
+   XcarValue |   1.130593   .0317575     4.37   0.000     1.070032    1.194582
+     XcarAge |   1.018859    .004315     4.41   0.000     1.010437    1.027351
+XcarCommer~l |    .869903   .0283743    -4.27   0.000     .8160308    .9273317
+  XcarEngine |   1.346103   .0618113     6.47   0.000     1.230247     1.47287
+  XdrLicense |   .9797808   .0033491    -5.98   0.000     .9732386     .986367
+ XdrLicense2 |   1.000221   .0000677     3.26   0.001     1.000088    1.000354
+XdrGoodDri~r |   .9825273   .0187216    -0.93   0.355     .9465104    1.019915
+XdrAnyDriver |   1.057973   .0178991     3.33   0.001     1.023466    1.093642
+XdrSecondary |   .9176521   .0191949    -4.11   0.000     .8807915    .9560553
+ XdrBusiness |   1.203411   .0352481     6.32   0.000     1.136271    1.274517
+XdrHistLen~h |   .9486353   .0104188    -4.80   0.000      .928433    .9692772
+XdrHistCla~s |   1.930415   .0752742    16.87   0.000     1.788377    2.083734
+      Xyoung |    1.68789   .0608624    14.52   0.000      1.57272    1.811494
+XyoungFemale |   .8629043   .0248828    -5.11   0.000     .8154874    .9130783
+XyoungA~1921 |   1.072644   .0570357     1.32   0.187     .9664839    1.190465
+XyoungA~2124 |    .973724   .0558972    -0.46   0.643     .8701059    1.089682
+XyoungAge24p |   .8120275   .0460214    -3.67   0.000     .7266565    .9074283
+ XyoungExp13 |   .7853796   .0359578    -5.28   0.000     .7179732    .8591143
+ XyoungExp3p |   .7537753   .0401189    -5.31   0.000     .6791061    .8366546
+        Xyr2 |   .9150197    .018083    -4.49   0.000     .8802553    .9511571
+        Xyr3 |   .9333768   .0207053    -3.11   0.002     .8936647    .9748536
+        Xyr4 |   .8338697   .0193594    -7.83   0.000     .7967763      .87269
+        Xyr5 |   .5809498   .0162901   -19.37   0.000     .5498834    .6137714
+policyDura~n | (exposure)
+------------------------------------------------------------------------------
+
+. 
+. predict LambdaHat, ir
+
+. gen menuDbar  = (menuDeductible1+menuDeductible2)/2
+
+. gen choiceThres = (YmenuRatio/LambdaHat - 1) / menuDbar
+
+. gen LogchoiceThres = -log(choiceThres)
+(11800 missing values generated)
+
+. 
+. ***********************************************************
+. /* Table 3 - Probit, column (2) - coefficinets BEFORE renormalization */
+. ***********************************************************
+. probit YchoiceL LogchoiceThres X* /* get the coefficients, not dp/dx, and use
+>  to renormalize */
+
+Iteration 0:   log likelihood = -42796.173
+Iteration 1:   log likelihood = -37161.564
+Iteration 2:   log likelihood = -36962.578
+Iteration 3:   log likelihood =  -36959.55
+Iteration 4:   log likelihood = -36959.548
+
+Probit regression                                 Number of obs   =      94000
+                                                  LR chi2(36)     =   11673.25
+                                                  Prob > chi2     =     0.0000
+Log likelihood = -36959.548                       Pseudo R2       =     0.1364
+
+------------------------------------------------------------------------------
+    YchoiceL |      Coef.   Std. Err.      z    P>|z|     [95% Conf. Interval]
+-------------+----------------------------------------------------------------
+LogchoiceT~s |   .0947093   .0084247    11.24   0.000     .0781972    .1112215
+     XindAge |   -.016003   .0043969    -3.64   0.000    -.0246208   -.0073853
+    XindAge2 |   .0001575   .0000441     3.58   0.000     .0000712    .0002439
+  XindFemale |   .0757954   .0124649     6.08   0.000     .0513646    .1002263
+ XindMarried |    .060776   .0184693     3.29   0.001     .0245769    .0969751
+XindDivorced |  -.0302223   .0296159    -1.02   0.308    -.0882684    .0278237
+ XindWidower |  -.0325909   .0433137    -0.75   0.452    -.1174841    .0523024
+XindMarita~s |   -.279565   .1878621    -1.49   0.137    -.6477679     .088638
+XindElemen~y |    .027724   .0405181     0.68   0.494      -.05169    .1071381
+XindTechni~l |   .0477095   .0238666     2.00   0.046     .0009319    .0944871
+XindAcademic |   .0500015   .0146401     3.42   0.001     .0213074    .0786956
+XindEduNores |   .0059653   .0145842     0.41   0.683    -.0226192    .0345498
+XindEmigrant |  -.0047059   .0125791    -0.37   0.708    -.0293605    .0199488
+   XcarValue |   .1258178   .0221835     5.67   0.000     .0823389    .1692967
+     XcarAge |  -.0151815   .0033813    -4.49   0.000    -.0218088   -.0085543
+XcarCommer~l |  -.0855993   .0263423    -3.25   0.001    -.1372294   -.0339693
+  XcarEngine |  -.0655766   .0374369    -1.75   0.080    -.1389517    .0077985
+  XdrLicense |   .0098815   .0029592     3.34   0.001     .0040816    .0156814
+ XdrLicense2 |   -.000139   .0000543    -2.56   0.010    -.0002454   -.0000326
+XdrGoodDri~r |  -.0682536   .0149112    -4.58   0.000     -.097479   -.0390281
+XdrAnyDriver |   .1034558   .0125104     8.27   0.000     .0789358    .1279757
+XdrSecondary |   .0003586   .0153961     0.02   0.981    -.0298172    .0305345
+ XdrBusiness |  -.0753025   .0259217    -2.91   0.004    -.1261081    -.024497
+XdrHistLen~h |    .106243   .0137297     7.74   0.000     .0793332    .1331527
+XdrHistCla~s |  -.0440744   .0517102    -0.85   0.394    -.1454246    .0572757
+      Xyoung |  -.2732103   .0597123    -4.58   0.000    -.3902443   -.1561763
+XyoungFemale |    .170093   .0296949     5.73   0.000     .1118921     .228294
+XyoungA~1921 |  -.0738779   .0711217    -1.04   0.299    -.2132738     .065518
+XyoungA~2124 |  -.0544199   .0736156    -0.74   0.460    -.1987039     .089864
+XyoungAge24p |   .1692359   .0694027     2.44   0.015     .0332091    .3052627
+ XyoungExp13 |   .0963692   .0622942     1.55   0.122    -.0257251    .2184635
+ XyoungExp3p |   .3079246   .0699535     4.40   0.000     .1708184    .4450309
+        Xyr2 |  -.4215818    .014262   -29.56   0.000    -.4495348   -.3936288
+        Xyr3 |   -.813435   .0172386   -47.19   0.000    -.8472219    -.779648
+        Xyr4 |  -1.120195   .0199088   -56.27   0.000    -1.159215   -1.081174
+        Xyr5 |  -1.356291   .0263087   -51.55   0.000    -1.407855   -1.304727
+       _cons |  -2.130907   .2231566    -9.55   0.000    -2.568285   -1.693528
+------------------------------------------------------------------------------
+
+. predict lrHat, xb
+(11800 missing values generated)
+
+. replace lrHat = lrHat/.0947093 /* the coefficient on the threshold */ 
+(94000 real changes made)
+
+. 
+. ****************************************
+. /* Table 3 - Probit, column (2) - IRR */
+. ****************************************
+. dprobit YchoiceL LogchoiceThres X*
+
+Iteration 0:   log likelihood = -42796.173
+Iteration 1:   log likelihood = -37161.564
+Iteration 2:   log likelihood = -36962.578
+Iteration 3:   log likelihood =  -36959.55
+Iteration 4:   log likelihood = -36959.548
+
+Probit regression, reporting marginal effects           Number of obs =  94000
+                                                        LR chi2(36)   =11673.25
+                                                        Prob > chi2   = 0.0000
+Log likelihood = -36959.548                             Pseudo R2     = 0.1364
+
+------------------------------------------------------------------------------
+YchoiceL |      dF/dx   Std. Err.      z    P>|z|     x-bar  [    95% C.I.   ]
+---------+--------------------------------------------------------------------
+Logcho~s |   .0203688   .0018116    11.24   0.000   7.99066   .016818   .02392
+ XindAge |  -.0034417   .0009455    -3.64   0.000   41.7468  -.005295 -.001589
+XindAge2 |   .0000339   9.47e-06     3.58   0.000   1893.03   .000015  .000052
+XindFe~e*|   .0165476   .0027617     6.08   0.000   .321309   .011135   .02196
+XindMa~d*|   .0127996   .0038075     3.29   0.001   .808404   .005337  .020262
+XindDi~d*|  -.0064023   .0061784    -1.02   0.308   .052745  -.018512  .005707
+XindWi~r*|  -.0068874    .008992    -0.75   0.452   .019245  -.024511  .010737
+XindMa~s*|  -.0510826   .0284975    -1.49   0.137      .001  -.106937  .004772
+XindEl~y*|   .0060517   .0089749     0.68   0.494   .015702  -.011539  .023642
+XindTe~l*|   .0105058   .0053784     2.00   0.046   .050872  -.000036  .021047
+XindAc~c*|   .0109057   .0032377     3.42   0.001    .24634    .00456  .017251
+XindEd~s*|   .0012832    .003138     0.41   0.683   .467468  -.004867  .007434
+XindEm~t*|  -.0010112   .0027007    -0.37   0.708   .336649  -.006305  .004282
+XcarVa~e |   .0270591   .0047682     5.67   0.000   10.9786   .017714  .036405
+ XcarAge |   -.003265   .0007273    -4.49   0.000   3.85845  -.004691  -.00184
+XcarCo~l*|  -.0176875   .0052218    -3.25   0.001   .085181  -.027922 -.007453
+XcarEn~e |  -.0141033   .0080504    -1.75   0.080   7.33097  -.029882  .001675
+XdrLic~e |   .0021252   .0006363     3.34   0.001   18.7816   .000878  .003372
+XdrLic~2 |  -.0000299   .0000117    -2.56   0.010   452.455  -.000053 -7.0e-06
+XdrGoo~r*|  -.0147669   .0032451    -4.58   0.000   .578245  -.021127 -.008407
+XdrAny~r*|   .0216781   .0025516     8.27   0.000   .725085   .016677  .026679
+XdrSec~y*|   .0000771   .0033121     0.02   0.981   .160617  -.006414  .006569
+XdrBus~s*|  -.0156241   .0051833    -2.91   0.004     .0765  -.025783 -.005465
+XdrHis~h |   .0228492   .0029499     7.74   0.000   2.90774   .017068  .028631
+XdrHis~s |  -.0094789   .0111211    -0.85   0.394   .044516  -.031276  .012318
+  Xyoung*|  -.0524363   .0101248    -4.58   0.000   .136681  -.072281 -.032592
+Xyoung~e*|   .0395935   .0074379     5.73   0.000   .067702   .025015  .054172
+Xyo~1921*|  -.0152841   .0141354    -1.04   0.299   .034021  -.042989  .012421
+Xyo~2124*|  -.0114008    .015014    -0.74   0.460   .070255  -.040828  .018026
+Xyou~24p*|   .0397163   .0176524     2.44   0.015    .01883   .005118  .074314
+Xyoun~13*|   .0217191   .0146841     1.55   0.122   .054915  -.007061  .050499
+Xyoun~3p*|   .0761801   .0195514     4.40   0.000   .063968    .03786    .1145
+    Xyr2*|  -.0791717   .0023605   -29.56   0.000   .217809  -.083798 -.074545
+    Xyr3*|  -.1303113   .0021182   -47.19   0.000   .185415  -.134463  -.12616
+    Xyr4*|  -.1616247   .0020217   -56.27   0.000   .185787  -.165587 -.157662
+    Xyr5*|  -.1920366   .0024512   -51.55   0.000   .217096  -.196841 -.187232
+---------+--------------------------------------------------------------------
+  obs. P |    .169617
+ pred. P |   .1331464  (at x-bar)
+------------------------------------------------------------------------------
+(*) dF/dx is for discrete change of dummy variable from 0 to 1
+    z and P>|z| correspond to the test of the underlying coefficient being 0
+
+. 
+. ****************************************
+. /* Table 3 - Probit, column (3) - IRR */
+. ****************************************
+. dprobit YchoiceL X*
+
+Iteration 0:   log likelihood = -49499.997
+Iteration 1:   log likelihood = -43309.373
+Iteration 2:   log likelihood = -43090.479
+Iteration 3:   log likelihood = -43086.949
+Iteration 4:   log likelihood = -43086.946
+
+Probit regression, reporting marginal effects           Number of obs = 105800
+                                                        LR chi2(35)   =12826.10
+                                                        Prob > chi2   = 0.0000
+Log likelihood = -43086.946                             Pseudo R2     = 0.1296
+
+------------------------------------------------------------------------------
+YchoiceL |      dF/dx   Std. Err.      z    P>|z|     x-bar  [    95% C.I.   ]
+---------+--------------------------------------------------------------------
+ XindAge |  -.0042487   .0008619    -4.93   0.000   41.1371  -.005938 -.002559
+XindAge2 |   .0000455   8.74e-06     5.21   0.000    1845.2   .000028  .000063
+XindFe~e*|   .0134074    .002649     5.12   0.000   .316285   .008215  .018599
+XindMa~d*|   .0044644   .0035281     1.26   0.208   .778866  -.002451  .011379
+XindDi~d*|    .004449   .0059535     0.75   0.451   .057155   -.00722  .016118
+XindWi~r*|  -.0025108   .0086927    -0.29   0.774   .019924  -.019548  .014527
+XindMa~s*|   -.037002   .0267295    -1.24   0.215   .001267  -.089391  .015387
+XindEl~y*|   .0015802   .0085216     0.19   0.852   .015681  -.015122  .018282
+XindTe~l*|   .0137566   .0051337     2.75   0.006   .053393   .003695  .023818
+XindAc~c*|   .0052675   .0030826     1.72   0.085   .232732  -.000774  .011309
+XindEd~s*|   .0025195   .0030137     0.84   0.403   .468043  -.003387  .008426
+XindEm~t*|   .0002928   .0026366     0.11   0.912   .335095  -.004875   .00546
+XcarVa~e |   .0299171   .0046086     6.49   0.000   10.9721   .020885   .03895
+ XcarAge |  -.0017349   .0006903    -2.51   0.012   3.95215  -.003088 -.000382
+XcarCo~l*|   -.029365   .0047538    -5.77   0.000   .083166  -.038682 -.020048
+XcarEn~e |   .0075478    .007503     1.01   0.314   7.33179  -.007158  .022253
+XdrLic~e |   .0005448   .0005746     0.95   0.343   18.1775  -.000581  .001671
+XdrLic~2 |  -.0000167   .0000111    -1.50   0.132   431.918  -.000038  5.1e-06
+XdrGoo~r*|  -.0151708   .0030531    -4.99   0.000   .547987  -.021155 -.009187
+XdrAny~r*|   .0257743   .0025099     9.94   0.000   .743214   .020855  .030694
+XdrSec~y*|  -.0069989   .0031781    -2.18   0.030   .150643  -.013228  -.00077
+XdrBus~s*|  -.0016678   .0049982    -0.33   0.739   .081758  -.011464  .008128
+XdrHis~h |   .0171207   .0021025     8.14   0.000   2.84692      .013  .021242
+XdrHis~s |   .0495478   .0072964     6.79   0.000   .059768   .035247  .063849
+  Xyoung*|  -.0012361   .0070909    -0.17   0.862   .191541  -.015134  .012662
+Xyoung~e*|   .0194868   .0054042     3.74   0.000   .078686   .008895  .030079
+Xyo~1921*|  -.0147149   .0094838    -1.50   0.134   .050709  -.033303  .003873
+Xyo~2124*|  -.0156062   .0100766    -1.50   0.134   .089405  -.035356  .004144
+Xyou~24p*|   .0136163    .011057     1.27   0.205   .022353  -.008055  .035288
+Xyoun~13*|  -.0008515   .0086314    -0.10   0.922   .070737  -.017769  .016066
+Xyoun~3p*|   .0409659   .0113892     3.85   0.000    .07913   .018644  .063288
+    Xyr2*|  -.0859136   .0022745   -33.36   0.000   .224868  -.090372 -.081456
+    Xyr3*|  -.1367238   .0021002   -50.58   0.000   .194357   -.14084 -.132608
+    Xyr4*|  -.1734054   .0018361   -65.18   0.000   .178384  -.177004 -.169807
+    Xyr5*|  -.2084511    .001784   -72.89   0.000   .194943  -.211948 -.204954
+---------+--------------------------------------------------------------------
+  obs. P |   .1776843
+ pred. P |   .1420885  (at x-bar)
+------------------------------------------------------------------------------
+(*) dF/dx is for discrete change of dummy variable from 0 to 1
+    z and P>|z| correspond to the test of the underlying coefficient being 0
+
+. log close
+       log:  C:\Documents and Settings\leinav.ECON\My Documents\alma\AER_Revisi
+> on\Final version AER\Alma's version\tables1_2_3.log
+  log type:  text
+ closed on:   2 Jan 2007, 09:56:35
+-------------------------------------------------------------------------------

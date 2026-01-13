@@ -1,0 +1,5 @@
+[console_scripts]
+task-a-baseline = informal_bids.cli:task_a_baseline
+task-a-sensitivity = informal_bids.cli:task_a_sensitivity
+task-b-baseline = informal_bids.cli:task_b_baseline
+task-b-sensitivity = informal_bids.cli:task_b_sensitivity

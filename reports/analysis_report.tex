@@ -1,0 +1,339 @@
+% Analysis Report: Informal Bids Simulation Results
+% Author: Austin Li
+% Date: January 2026
+
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{setspace}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage[hidelinks]{hyperref}
+\urlstyle{same}
+
+\setstretch{1.15}
+\setlength{\parskip}{0.5em}
+\setlength{\parindent}{0pt}
+
+% Table and list formatting
+\renewcommand{\arraystretch}{1.15}
+\setlength{\tabcolsep}{6pt}
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+\setlist[itemize]{leftmargin=1.6em, itemsep=0.2em, topsep=0.3em}
+\setlist[enumerate]{leftmargin=1.8em, itemsep=0.2em, topsep=0.3em}
+\emergencystretch=1.5em
+
+% Custom colors for highlights
+\definecolor{successgreen}{RGB}{34,139,34}
+\definecolor{warningorange}{RGB}{255,140,0}
+
+\graphicspath{{figures/}}
+
+\title{\textbf{Analysis Report}\\[0.5em]
+\Large Simulation Results for Informal Bid Admission Cutoff Estimation}
+\author{Austin Li}
+\date{}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+%=============================================================================
+\section{Executive Summary}
+%=============================================================================
+
+This report presents the results from the simulation exercise designed to validate the threshold/interval framework for estimating admission cutoffs in M\&A-style auctions. The exercise was conducted in response to the December 18, 2025 meeting notes, which outlined two simulation tasks:
+
+\begin{itemize}
+    \item \textbf{Task A}: Estimate a single constant cutoff $b^{I*}$ when only admission/rejection decisions are observed
+    \item \textbf{Task B}: Estimate type-specific cutoffs $b^{I*}_S$ and $b^{I*}_F$ for two bidder types (S and F)
+\end{itemize}
+
+\subsection{Key Findings}
+
+\textbf{Observed-sample definition (formal-stage conditioning).} In this simulation exercise, $N$ denotes the number of auctions that \emph{reach the formal stage} (i.e., at least one bidder is admitted). Auctions with zero admitted bidders (``all-reject'') are generated but treated as unobserved and excluded from the returned sample. Auctions where everyone is admitted (``all-admit'') are retained via a \emph{one-sided upper bound} on $b^{I*}$.
+
+\textbf{Main findings (based on 10 replications per $N$).}
+\begin{enumerate}
+    \item \textbf{Task A (Single Cutoff): baseline recovery but undercoverage at large $N$.} In the baseline run with $N=100$ observed auctions, the posterior mean is $\hat{\mu}=1.387$ (true $b^*=1.400$) with a 95\% credible interval $[1.367,\,1.406]$ (coverage achieved in this run). In sample-size sensitivity, the bias remains small but negative and \emph{coverage deteriorates sharply as $N$ grows} (e.g., 80\% at $N=100$, 60\% at $N=200$, and 0\% at $N=500$ in this run), consistent with the estimator becoming precise around the wrong value under formal-stage conditioning.
+
+    \item \textbf{Task B (Type-Specific Cutoffs): ordering is learnable, but coverage for $\mu_F$ weakens with $N$.} The baseline run recovers the ordering $b^*_S>b^*_F$ with $P(\mu_S>\mu_F\mid\text{data})=1.00$ and tight posteriors. In sensitivity analysis, $P(\mu_S>\mu_F)$ is already high at $N=20$ (about 92\%), but the 95\% coverage rate for type F falls below nominal as $N$ increases (e.g., 50\% at $N=200$ in this run).
+
+    \item \textbf{Incomplete auctions among observed deals are rare under this DGP.} Conditional on reaching the formal stage, the main incomplete case is ``all-admit'' (one-sided upper bounds). In the baseline parameters used here, this occurs in roughly 3--5\% of \emph{observed} auctions.
+\end{enumerate}
+
+
+
+%=============================================================================
+\section{Methodology Recap}
+%=============================================================================
+
+\subsection{The Threshold/Interval Framework}
+
+The estimation approach treats admission as governed by a deterministic screening rule:
+\[
+j \in \mathcal{A}_i \quad \Longleftrightarrow \quad b_{ij}^I \geq b_i^{I*}
+\]
+where $b_{ij}^I$ is bidder $j$'s informal bid and $b_i^{I*}$ is the latent admission threshold.
+
+Observed admit/reject decisions imply bounds on the threshold. Define
+\[
+L_i :=
+\begin{cases}
+\max_{j \in \mathcal{R}_i} b_{ij}^I, & \mathcal{R}_i \neq \emptyset \\
+-\infty, & \mathcal{R}_i = \emptyset
+\end{cases}
+\qquad
+U_i :=
+\begin{cases}
+\min_{j \in \mathcal{A}_i} b_{ij}^I, & \mathcal{A}_i \neq \emptyset \\
+\infty, & \mathcal{A}_i = \emptyset
+\end{cases}
+\]
+so that $b_i^{I*} \in [L_i, U_i]$.
+
+\textbf{Formal-stage conditioning.} In the simulations (and in the intended empirical setting), the observed dataset is conditional on reaching the formal stage. For Task A, this means we observe only auctions with at least one admitted bidder, i.e. $U_i<\infty$; auctions with $\mathcal{A}_i=\emptyset$ (``all-reject'', $U_i=\infty$) are treated as unobserved and excluded. Auctions with $\mathcal{R}_i=\emptyset$ (``all-admit'', $L_i=-\infty$) are retained and contribute a one-sided upper bound.
+
+\subsection{MCMC Data Augmentation}
+
+The estimation uses Gibbs sampling with data augmentation:
+\begin{align}
+b_i^{I*} &= \mu + \nu_i \\
+\nu_i &\sim \mathcal{N}(0, \sigma^2), \quad \nu_i \in [L_i - \mu, U_i - \mu]
+\end{align}
+
+Each MCMC iteration:
+\begin{enumerate}
+    \item Samples latent $\nu_i$ from truncated normals (data augmentation step)
+    \item Updates $\mu$ via conjugate normal posterior
+    \item Updates $\sigma^2$ via conjugate inverse-gamma posterior
+\end{enumerate}
+
+\subsection{Simulation Parameters}
+
+\textbf{Baseline DGP (Task A):}
+\begin{itemize}
+    \item $N = 100$ \emph{observed (formal-stage)} auctions, $J = 3$ bidders per auction
+    \item Valuations: $v_{ij} = 1.3 + \epsilon_{ij}$, $\epsilon_{ij} \sim \mathcal{N}(0, 0.2^2)$
+    \item True cutoff: $b^{I*} = 1.4$
+\end{itemize}
+
+\textbf{Baseline DGP (Task B):}
+\begin{itemize}
+    \item Same valuation structure
+    \item $N = 100$ \emph{observed (formal-stage)} auctions, $J = 3$ bidders per auction
+    \item Type-specific cutoffs: $b^{I*}_S = 1.45$, $b^{I*}_F = 1.35$
+    \item Type probability: $P(\text{Type S}) = 0.5$
+\end{itemize}
+
+%=============================================================================
+\section{Task A Results: Single Constant Cutoff}
+%=============================================================================
+
+\subsection{Baseline Simulation}
+
+Figure~\ref{fig:task_a_diagnostics} presents the MCMC diagnostics for the Task A baseline simulation with $N=100$ auctions.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{task_a_diagnostics.png}
+    \caption{Task A MCMC Diagnostics. Left panels show trace plots for $\mu$ and $\sigma$ across three chains (good mixing indicated by overlapping chains). Right panels show posterior histograms with the true value (dashed red line) and posterior mean (solid blue line).}
+    \label{fig:task_a_diagnostics}
+\end{figure}
+
+\textbf{Observations:}
+\begin{itemize}
+    \item Chains mix well and converge (Gelman--Rubin $\hat{R}\approx 1.00$).
+    \item Baseline estimate: posterior mean $\hat{\mu}=1.387$ with 95\% credible interval $[1.367,\,1.406]$ (true $b^*=1.400$).
+    \item The estimate is slightly below the true cutoff in this run, consistent with the small negative bias seen in the sensitivity analysis under formal-stage conditioning.
+\end{itemize}
+
+Figure~\ref{fig:task_a_intervals} visualizes the \emph{two-sided} interval constraints $[L_i, U_i]$ for auctions with both admitted and rejected bidders (``complete'' auctions). One-sided all-admit auctions are retained in estimation but omitted from this figure for readability.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{task_a_intervals.png}
+    \caption{Task A Interval Bounds. Each horizontal line represents one auction's interval $[L_i, U_i]$. The true cutoff (red dashed) and estimated cutoff (blue dashed) are shown. Auctions providing tighter intervals contribute more information.}
+    \label{fig:task_a_intervals}
+\end{figure}
+
+\textbf{Observations:}
+\begin{itemize}
+    \item Two-sided intervals cluster around the true cutoff, with meaningful variation in width across auctions.
+    \item The posterior mean lies inside most two-sided intervals, reflecting how the likelihood aggregates the auction-level bounds.
+\end{itemize}
+
+\subsection{Sensitivity Analysis: Sample Size}
+
+A key concern is performance with the small sample sizes typical of hand-collected M\&A data. Figure~\ref{fig:task_a_sensitivity} shows how estimation quality varies with $N$.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{task_a_sensitivity.png}
+    \caption{Task A sensitivity to sample size under formal-stage conditioning. Results across $N \in \{20, 50, 100, 200, 500\}$ with 10 replications each. Bias is small but negative, credible intervals shrink with $N$, and empirical coverage falls substantially below the nominal 95\% level for large $N$ in this run.}
+    \label{fig:task_a_sensitivity}
+\end{figure}
+
+\textbf{Key findings:}
+
+\begin{table}[H]
+\centering
+\caption{Task A Performance Metrics by Sample Size}
+\begin{tabular}{@{}rccccc@{}}
+\toprule
+$N$ & Mean Bias & Mean RMSE & Mean CI Width & Coverage & \% Incomplete \\
+\midrule
+20 & $-0.0233$ & $0.0424$ & $0.1328$ & $100\%$ & $3.5\%$ \\
+50 & $-0.0132$ & $0.0235$ & $0.0677$ & $100\%$ & $5.4\%$ \\
+100 & $-0.0125$ & $0.0163$ & $0.0393$ & $80\%$ & $4.4\%$ \\
+200 & $-0.0107$ & $0.0125$ & $0.0245$ & $60\%$ & $4.2\%$ \\
+500 & $-0.0089$ & $0.0095$ & $0.0127$ & $0\%$ & $4.2\%$ \\
+\bottomrule
+\end{tabular}
+\label{tab:task_a_metrics}
+\end{table}
+
+\textbf{Interpretation:}
+\begin{itemize}
+    \item \textbf{Bias is small but persistently negative} under formal-stage conditioning (about $-0.009$ to $-0.023$ across $N$ in this run).
+    \item \textbf{Credible intervals shrink quickly with $N$}, but \textbf{empirical coverage falls} as $N$ increases (down to 0\% at $N=500$ in this run), indicating undercoverage relative to the nominal 95\% target.
+    \item At $N\approx 20$ (the expected hand-collected sample size), intervals are wide enough that coverage can look good, but this should not be interpreted as evidence of correct calibration once the sample-selection mechanism is accounted for.
+\end{itemize}
+
+\subsection{Incomplete Auctions}
+
+With formal-stage conditioning, ``all-reject'' auctions ($\mathcal{A}_i=\emptyset$) are treated as unobserved and excluded from the observed sample. Among observed auctions, the relevant incomplete case is ``all-admit'' ($\mathcal{R}_i=\emptyset$), which provides only a one-sided upper bound ($L_i=-\infty$).
+
+In the baseline run with $N=100$ observed auctions, 3\% of observed auctions are all-admit. To obtain $N=100$ observed auctions, the simulator initiates more auctions and drops unobserved all-reject cases (e.g., 155 initiated vs.\ 100 observed in the baseline run).
+
+%=============================================================================
+\section{Task B Results: Type-Specific Cutoffs}
+%=============================================================================
+
+\subsection{Baseline Simulation}
+
+Task B estimates separate cutoffs for Type S ($b^{I*}_S = 1.45$) and Type F ($b^{I*}_F = 1.35$) bidders. Figure~\ref{fig:task_b_diagnostics} shows the MCMC diagnostics.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{task_b_diagnostics.png}
+    \caption{Task B MCMC diagnostics for $\mu_S$, $\mu_F$, and the gap $\Delta=\mu_S-\mu_F$ (three chains). Dashed reference lines indicate true values; solid reference lines indicate posterior means.}
+    \label{fig:task_b_diagnostics}
+\end{figure}
+
+\textbf{Observations:}
+\begin{itemize}
+    \item Chains mix well and converge ($\hat{R}\approx 1.00$ for both types).
+    \item Baseline estimates: $\hat{\mu}_S=1.443$ with 95\% CI $[1.412,\,1.476]$ (true $1.450$) and $\hat{\mu}_F=1.331$ with 95\% CI $[1.301,\,1.357]$ (true $1.350$).
+    \item Effective sample sizes differ by type because some auctions provide no information for a given type (e.g., in the baseline run the sampler uses 86 auctions with S information and 91 with F information out of $N=100$ observed auctions).
+\end{itemize}
+
+Figure~\ref{fig:task_b_intervals} shows the type-specific \emph{two-sided} interval constraints (auctions with both admitted and rejected bidders of that type). One-sided type-specific bounds are used in estimation but omitted from this figure.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{task_b_intervals.png}
+    \caption{Task B type-specific two-sided intervals. Left: Type S intervals. Right: Type F intervals. True cutoffs (dashed) and posterior means (solid) are shown for each type.}
+    \label{fig:task_b_intervals}
+\end{figure}
+
+\subsection{Cutoff Gap Estimation}
+
+A central question is whether the data can distinguish between type-specific cutoffs. The posterior for the gap $\Delta = \mu_S - \mu_F$ provides this inference.
+
+\textbf{Key results:}
+\begin{itemize}
+    \item True gap: $\Delta^* = 1.45 - 1.35 = 0.10$
+    \item Estimated gap (baseline run): posterior mean $\hat{\Delta}=0.112$
+    \item $P(\mu_S > \mu_F \mid \text{data}) = 1.00$ in the baseline run
+\end{itemize}
+
+This suggests that, under this DGP, \textbf{moderate sample sizes can identify economically meaningful differences} in how the target screens different bidder types.
+
+\subsection{Sensitivity Analysis: Sample Size}
+
+Figure~\ref{fig:task_b_sensitivity} examines Task B performance across sample sizes.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{task_b_sensitivity.png}
+    \caption{Task B sensitivity to sample size under formal-stage conditioning. RMSE and credible interval widths fall with $N$, $P(\mu_S>\mu_F)$ increases toward 1, and empirical coverage for type F falls well below 95\% at larger $N$ in this run.}
+    \label{fig:task_b_sensitivity}
+\end{figure}
+
+\textbf{Key findings for $N=20$:}
+\begin{table}[H]
+\centering
+\caption{Task B Performance at $N=20$ (Critical for Real Data)}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Metric & Type S & Type F \\
+\midrule
+Mean Bias & $0.0042$ & $-0.0286$ \\
+Mean RMSE & $0.0648$ & $0.0654$ \\
+Coverage & $100\%$ & $90\%$ \\
+$P(\mu_S > \mu_F)$ & \multicolumn{2}{c}{$92.3\%$} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Interpretation:}
+\begin{itemize}
+    \item At $N\approx 20$, the estimator already assigns high probability to the correct ordering ($P(\mu_S>\mu_F)\approx 92\%$).
+    \item Uncertainty is substantial at small $N$ (wide credible intervals), which can yield high coverage in small samples.
+    \item Coverage for type F deteriorates as $N$ grows in this run, suggesting the same selection/truncation issue as in Task A when the likelihood does not explicitly condition on reaching the formal stage.
+\end{itemize}
+
+%=============================================================================
+\section{Key Findings and Takeaways}
+%=============================================================================
+
+This section directly addresses the deliverables requested in the December 18, 2025 meeting notes.
+
+\subsection{Recovery Accuracy for Cutoffs}
+
+\textbf{Finding 1: Baseline recovery is reasonable, but calibration depends on modeling formal-stage selection.}
+
+Both tasks produce well-behaved MCMC output and plausible posterior summaries in baseline runs. However, under formal-stage conditioning (dropping all-reject auctions as unobserved), the current likelihood does not explicitly condition on being observed. In the sample-size sensitivity runs, this manifests as \textbf{undercoverage at larger $N$} (Task A: 80\% at $N=100$ and 0\% at $N=500$; Task B: type-F coverage 50\% at $N=200$ in this run), despite small average bias.
+
+\subsection{Frequency of Informative Intervals}
+
+\textbf{Finding 2: Among observed auctions, two-sided bounds are common, but selection changes what is observed.}
+
+For Task A, conditional on reaching the formal stage, most observed auctions provide two-sided bounds (about 95\% complete in the sensitivity runs at $N=100$). The remaining observed auctions are typically all-admit, contributing one-sided upper bounds. All-reject auctions are not part of the observed sample by design, but their absence is informative about the selection mechanism.
+
+For Task B, most observed auctions provide information for each type (e.g., at $N=20$ the sensitivity runs average 17.5 auctions with S information and 18.1 with F information), while two-sided bounds \emph{by type} are less frequent (and the interval figure displays only those two-sided-by-type auctions).
+
+\subsection{Sensitivity to Cutoff Magnitude and Type Separation}
+
+\textbf{Finding 3: Type separation is learnable in this DGP; selection remains the main concern.}
+
+In the current parameterization ($b^*_S-b^*_F=0.10$), Task B strongly distinguishes types as $N$ increases and already delivers a strong ordering signal at $N\approx 20$ (about 92\% in this run). The main limitation highlighted by the sensitivity exercises is not identification of the ordering, but \textbf{credible-interval calibration under formal-stage conditioning}.
+
+\subsection{Performance at \texorpdfstring{$N \approx 20$}{N approx 20}}
+
+\textbf{Finding 4: At $N\approx 20$, the method is feasible and informative, but uncertainty is substantial.}
+
+At small $N$, credible intervals are wide and can exhibit high empirical coverage in these runs. For Task B, even at $N\approx 20$, the posterior often favors $\mu_S>\mu_F$. These small-sample results are consistent with feasibility for a hand-collected sample, while reinforcing that formal-stage selection needs to be modeled before interpreting credible intervals as calibrated uncertainty.
+
+%=============================================================================
+\section{Conclusion}
+%=============================================================================
+
+The simulation exercise validates the \emph{mechanics} of the threshold/interval approach: interval construction is straightforward, the Gibbs samplers converge reliably, and the framework can recover type ordering in Task B at small sample sizes. The sensitivity results also highlight a central modeling issue for the intended empirical setting: \textbf{when the dataset is conditional on reaching the formal stage, the selection mechanism must be incorporated (or the estimand redefined)} to obtain calibrated credible intervals.
+
+\textbf{Recommended next step:} extend the likelihood to condition on being observed at the formal stage (equivalently, incorporate the probability that an auction reaches the formal stage), then rerun the sensitivity exercises and proceed to covariates and richer bidder heterogeneity.
+
+\end{document}

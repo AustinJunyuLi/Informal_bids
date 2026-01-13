@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "informal-bids"
+version = "0.2.0"
+description = "MCMC estimation for informal bid admission cutoffs in auctions"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  "numpy",
+  "scipy",
+  "matplotlib",
+  "seaborn",
+  "pandas",
+  "numba",
+]
+
+[project.scripts]
+task-a-baseline = "informal_bids.cli:task_a_baseline"
+task-b-baseline = "informal_bids.cli:task_b_baseline"
+task-a-sensitivity = "informal_bids.cli:task_a_sensitivity"
+task-b-sensitivity = "informal_bids.cli:task_b_sensitivity"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+packages = ["informal_bids"]

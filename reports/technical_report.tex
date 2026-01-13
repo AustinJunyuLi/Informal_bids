@@ -1,0 +1,749 @@
+% Technical Implementation Report: Informal Bids MCMC Estimation
+% Author: Austin Li
+% Date: January 2026
+
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{setspace}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage[hidelinks]{hyperref}
+\urlstyle{same}
+\usepackage{enumitem}
+\usepackage{fancyvrb}
+
+\setstretch{1.15}
+\setlength{\parskip}{0.5em}
+\setlength{\parindent}{0pt}
+
+% Table and list formatting
+\renewcommand{\arraystretch}{1.15}
+\setlength{\tabcolsep}{6pt}
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+\setlist[itemize]{leftmargin=1.6em, itemsep=0.2em, topsep=0.3em}
+\setlist[enumerate]{leftmargin=1.8em, itemsep=0.2em, topsep=0.3em}
+\emergencystretch=1.5em
+
+% Code listing style
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{pythonstyle}{
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{blue},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=5pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2,
+    language=Python
+}
+\lstset{style=pythonstyle}
+
+\title{\textbf{Technical Implementation Report}\\[0.5em]
+\Large Informal Bids MCMC Estimation\\[0.3em]
+\large A Python-to-MATLAB Translation Guide}
+\author{Austin Li}
+\date{January 2026}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+%=============================================================================
+\section{Executive Summary}
+%=============================================================================
+
+This report provides a comprehensive technical breakdown of the Python codebase for estimating admission cutoffs in M\&A-style auctions using Markov Chain Monte Carlo (MCMC) methods. The code implements the threshold/interval framework discussed in the December 18, 2025 meeting notes.
+
+\textbf{What the code does:}
+\begin{itemize}
+    \item \textbf{Task A}: Estimates a single constant cutoff $b^{I*}$ for informal bid admission
+    \item \textbf{Task B}: Estimates type-specific cutoffs $b^{I*}_S$ and $b^{I*}_F$ for two bidder types
+\end{itemize}
+
+The estimation uses Gibbs sampling with data augmentation, where latent admission thresholds are sampled subject to interval constraints implied by observed admit/reject decisions. In the current simulation setup, the sample is \emph{conditional on reaching the formal stage} (auctions with zero admitted bidders are treated as unobserved and excluded), and all-admit auctions enter via one-sided upper bounds.
+
+\textbf{Structure of this report:}
+\begin{enumerate}
+    \item Code architecture overview
+    \item Python-MATLAB translation guide
+    \item Module-by-module deep dive with code annotations
+    \item Windows installation and setup guide
+    \item Running the code
+\end{enumerate}
+
+%=============================================================================
+\section{Code Architecture Overview}
+%=============================================================================
+
+\subsection{Module Structure}
+
+The codebase is organized as a Python package called \texttt{informal\_bids} with the following modules:
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}>{\ttfamily}l L L@{}}
+\toprule
+\textbf{Module} & \textbf{Purpose} & \textbf{Key Dependencies} \\
+\midrule
+\texttt{cli.py} & Entry points for running baselines and sensitivity analyses & config, data, samplers, analysis, visualization, sensitivity \\
+\texttt{data.py} & DGP parameters, auction data classes, simulation generators & utils \\
+\texttt{data\_io.py} & CSV loader for real auction data (optional) & data \\
+\texttt{samplers.py} & Gibbs samplers for Task A and Task B & data, utils, numba\_kernels \\
+\texttt{analysis.py} & Bias/RMSE/CI/coverage metrics & (pure NumPy) \\
+\texttt{visualization.py} & Diagnostics and interval plots & data \\
+\texttt{sensitivity.py} & Sample-size sensitivity framework & data, samplers \\
+\texttt{config.py} & Plot styling and output paths & matplotlib, seaborn \\
+\texttt{utils.py} & Shared math utilities (truncnorm, R-hat, covariates) & scipy \\
+\texttt{numba\_kernels.py} & JIT-compiled kernels for intercept-only MCMC & numba \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Module Purposes}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}>{\ttfamily}l L L@{}}
+\toprule
+\textbf{Module} & \textbf{MATLAB Equivalent} & \textbf{Purpose} \\
+\midrule
+\texttt{data.py} & Struct definitions & DGP parameters, auction data structures, data generators \\
+\texttt{samplers.py} & Main estimation script & MCMC samplers using Gibbs sampling \\
+\texttt{analysis.py} & Post-processing functions & Compute bias, RMSE, coverage metrics \\
+\texttt{visualization.py} & Plotting scripts & Generate diagnostic plots \\
+\texttt{sensitivity.py} & Batch runner & Run parameter sweeps across $N$, cutoffs \\
+\texttt{cli.py} & \texttt{main.m} & Entry points for running simulations \\
+\texttt{utils.py} & Helper functions & Truncated normal sampling, Gelman-Rubin \\
+\texttt{numba\_kernels.py} & MEX files & JIT-compiled fast loops (like MATLAB MEX) \\
+\texttt{config.py} & Configuration file & Output paths, plotting settings \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+%=============================================================================
+\section{Python-MATLAB Translation Guide}
+%=============================================================================
+
+This section helps MATLAB users understand Python syntax and libraries used in the codebase.
+
+\subsection{Basic Syntax Comparison}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}L L@{}}
+\toprule
+\textbf{MATLAB} & \textbf{Python} \\
+\midrule
+\texttt{\% comment} & \texttt{\# comment} \\
+\texttt{function y = foo(x)} & \texttt{def foo(x): return y} \\
+\texttt{end} & Indentation (no end keyword) \\
+\texttt{if cond ... end} & \texttt{if cond: ...} \\
+\texttt{for i = 1:N ... end} & \texttt{for i in range(N): ...} \\
+\texttt{a(1)} (1-indexed) & \texttt{a[0]} (0-indexed) \\
+\texttt{a(1:3)} & \texttt{a[0:3]} or \texttt{a[:3]} \\
+\texttt{a(end)} & \texttt{a[-1]} \\
+\texttt{[a; b]} (vertical concat) & \texttt{np.vstack([a, b])} \\
+\texttt{[a, b]} (horizontal concat) & \texttt{np.hstack([a, b])} \\
+\texttt{zeros(N, M)} & \texttt{np.zeros((N, M))} \\
+\texttt{rand(N, 1)} & \texttt{np.random.rand(N)} \\
+\texttt{randn(N, 1)} & \texttt{np.random.randn(N)} \\
+\texttt{A * B} (matrix multiply) & \texttt{A @ B} \\
+\texttt{A .* B} (elementwise) & \texttt{A * B} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Key Libraries}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}l l L@{}}
+\toprule
+\textbf{Python Library} & \textbf{MATLAB Equivalent} & \textbf{Used For} \\
+\midrule
+\texttt{numpy} (np) & Built-in arrays & Arrays, linear algebra \\
+\texttt{scipy.stats} & Statistics Toolbox & Distributions (invgamma, truncnorm) \\
+\texttt{matplotlib} & Built-in plotting & Figures, subplots \\
+\texttt{pandas} & Tables & Data frames, CSV I/O \\
+\texttt{numba} & MEX/Coder & JIT compilation for speed \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Classes and Dataclasses}
+
+Python uses \textit{classes} to bundle data and methods together. The \texttt{@dataclass} decorator automatically generates \texttt{\_\_init\_\_} methods:
+
+\begin{lstlisting}
+# Python dataclass (like MATLAB struct with defaults)
+@dataclass
+class MCMCConfig:
+    n_iterations: int = 20000    # MATLAB: config.n_iterations = 20000
+    burn_in: int = 10000         # MATLAB: config.burn_in = 10000
+    n_chains: int = 3            # MATLAB: config.n_chains = 3
+\end{lstlisting}
+
+In MATLAB, this would be:
+\begin{verbatim}
+config = struct();
+config.n_iterations = 20000;
+config.burn_in = 10000;
+config.n_chains = 3;
+\end{verbatim}
+
+%=============================================================================
+\section{Module Deep Dive: \texttt{data.py}}
+%=============================================================================
+
+This module defines the data structures for simulation parameters and auction data.
+
+\subsection{DGP Parameters (Task A)}
+
+\begin{lstlisting}
+@dataclass
+class TaskADGPParameters:
+    """Data Generating Process for Task A (single cutoff).
+    
+    MATLAB equivalent:
+        dgp.N = 100;          % Number of observed (formal-stage) auctions
+        dgp.J = 3;            % Bidders per auction  
+        dgp.mu_v = 1.3;       % Mean valuation
+        dgp.sigma_v = 0.2;    % Valuation std dev
+        dgp.b_star = 1.4;     % True cutoff
+    """
+    N: int              # Number of observed (formal-stage) auctions
+    J: int              # Bidders per auction
+    mu_v: float         # Mean valuation
+    sigma_v: float      # Std dev of valuation shock
+    b_star: float       # True admission cutoff
+\end{lstlisting}
+
+\subsection{Auction Data Structure}
+
+Each auction is represented as a \texttt{TaskAAuctionData} object containing:
+
+\begin{lstlisting}
+@dataclass
+class TaskAAuctionData:
+    auction_id: int       # Auction index i
+    X_i: np.ndarray       # Covariates (for extensions)
+    bids: np.ndarray      # All informal bids in auction
+    admitted: np.ndarray  # Boolean: True if admitted
+    L_i: float            # Lower bound = max(rejected bids)
+    U_i: float            # Upper bound = min(admitted bids)
+    is_complete: bool     # True if L_i < U_i (both bounds finite)
+\end{lstlisting}
+
+\textbf{Key insight}: The interval $[L_i, U_i]$ contains the true cutoff $b^{I*}$ for complete auctions.
+
+\subsection{Data Generation}
+
+The \texttt{TaskADataGenerator} class simulates synthetic auction data:
+
+\begin{lstlisting}
+def generate_auction_data(self):
+    """
+    Generate N observed auctions (conditional on reaching the formal stage):
+      while len(auctions) < N:
+        1. Draw valuations: v_ij = mu_v + epsilon_ij,  epsilon ~ N(0, sigma_v^2)
+        2. Set bids = valuations (truth-telling at informal stage)
+        3. Draw covariates X_i and cutoff: b*_i = X_i' beta (+ optional shock)
+        4. Apply admission: j in A_i iff b_ij >= b*_i
+        5. If no one admitted: skip (unobserved all-reject)
+        6. Else compute bounds:
+           - mixed outcomes: L_i = max(rejected), U_i = min(admitted) (two-sided)
+           - all admitted:   L_i = -inf,        U_i = min(bids)      (one-sided)
+    """
+    while len(auctions) < self.params.N:
+        # Draw valuation shocks
+        epsilon = np.random.normal(0, self.params.sigma_v, self.params.J)
+        valuations = self.params.mu_v + epsilon
+        bids = valuations.copy()
+        
+        # Admission rule (with optional covariates)
+        X_i = self._draw_covariates()
+        b_star_i = X_i @ self.params.beta
+        admitted = bids >= b_star_i
+        
+        # Compute interval bounds
+        if admitted.sum() == 0:
+            continue  # unobserved all-reject
+        if admitted.sum() > 0 and (~admitted).sum() > 0:
+            L_i = np.max(bids[~admitted])  # Max rejected
+            U_i = np.min(bids[admitted])   # Min admitted
+            is_complete = True
+        else:
+            L_i = -np.inf
+            U_i = np.min(bids)
+            is_complete = False
+\end{lstlisting}
+
+%=============================================================================
+\section{Module Deep Dive: \texttt{samplers.py}}
+%=============================================================================
+
+This is the core estimation module implementing Gibbs sampling with data augmentation.
+
+\subsection{The Statistical Model}
+
+For Task A, the model is:
+\begin{align}
+b_i^{I*} &= \mu + \nu_i \\
+\nu_i &\sim \mathcal{N}(0, \sigma^2) \\
+\nu_i &\in [L_i - \mu, \; U_i - \mu] \quad \text{(interval constraint)}
+\end{align}
+
+The MCMC alternates between:
+\begin{enumerate}
+    \item \textbf{Step 1}: Sample latent $\nu_i$ from truncated normal, given current $(\mu, \sigma)$
+    \item \textbf{Step 2}: Update $\mu$ (or $\beta$ with covariates) via conjugate normal update
+    \item \textbf{Step 3}: Update $\sigma^2$ via conjugate inverse-gamma update
+\end{enumerate}
+
+\subsection{Gibbs Sampler: Line-by-Line Annotation}
+
+\begin{lstlisting}[numbers=left, firstnumber=122, escapeinside={(*@}{@*)}]
+# Gibbs sampling main loop
+for t in range(self.config.n_iterations):
+    # ============================================================
+    # STEP 1: Sample latent nu_i for each auction
+    # ============================================================
+    # This is data augmentation: we sample the "missing data" (nu_i)
+    # subject to the interval constraint from observed admits/rejects
+    
+    nu_samples = np.zeros(self.N)      (*@\textcolor{codegreen}{\# Storage for N auctions}@*)
+    b_star_samples = np.zeros(self.N)  (*@\textcolor{codegreen}{\# Implied cutoffs}@*)
+    
+    for i, auction in enumerate(self.working_auctions):
+        xb = float(auction.X_i @ beta)  (*@\textcolor{codegreen}{\# X'beta (linear predictor)}@*)
+        lower = auction.L_i - xb        (*@\textcolor{codegreen}{\# Transform bounds}@*)
+        upper = auction.U_i - xb        (*@\textcolor{codegreen}{\# to nu\_i scale}@*)
+        
+        # Sample nu_i from TruncatedNormal(0, sigma, [lower, upper])
+        # MATLAB: nu_i = trandn((lower-0)/sigma, (upper-0)/sigma) * sigma
+        nu_i = sample_truncated_normal(0, sigma, lower, upper)
+        
+        nu_samples[i] = nu_i
+        b_star_samples[i] = xb + nu_i   (*@\textcolor{codegreen}{\# Reconstruct b*\_i}@*)
+    
+    # ============================================================
+    # STEP 2: Update beta (conjugate normal-normal update)
+    # ============================================================
+    # Prior: beta ~ N(mu_0, V_0)
+    # Likelihood: b*_i | beta ~ N(X_i'beta, sigma^2)
+    # Posterior: beta | {b*_i} ~ N(mu_post, V_post)
+    
+    XtX = self.X.T @ self.X              (*@\textcolor{codegreen}{\# X'X matrix}@*)
+    V_post = np.linalg.inv(              (*@\textcolor{codegreen}{\# Posterior variance}@*)
+        V0_inv + XtX / (sigma ** 2)
+    )
+    beta_post = V_post @ (               (*@\textcolor{codegreen}{\# Posterior mean}@*)
+        V0_inv @ beta_prior_mean +
+        (self.X.T @ b_star_samples) / (sigma ** 2)
+    )
+    beta = np.random.multivariate_normal(beta_post, V_post)
+    
+    # ============================================================
+    # STEP 3: Update sigma^2 (conjugate inverse-gamma)
+    # ============================================================
+    # Prior: sigma^2 ~ InvGamma(a, b)
+    # Likelihood: sum of squared residuals
+    # Posterior: sigma^2 ~ InvGamma(a_post, b_post)
+    
+    a_post = a_prior + self.N / 2
+    b_post = b_prior + np.sum(nu_samples ** 2) / 2
+    sigma_sq = invgamma.rvs(a_post, scale=b_post)
+    sigma = np.sqrt(sigma_sq)
+    
+    # Store draws
+    beta_chain[t] = beta
+    sigma_chain[t] = sigma
+\end{lstlisting}
+
+\subsection{MATLAB Pseudocode Equivalent}
+
+For readers more comfortable with MATLAB, here is equivalent pseudocode:
+
+\begin{verbatim}
+% Gibbs sampler for Task A
+for t = 1:n_iterations
+    % Step 1: Sample nu_i from truncated normal
+    for i = 1:N
+        xb = X(i,:) * beta;
+        lower = L(i) - xb;
+        upper = U(i) - xb;
+        nu(i) = sample_truncnorm(0, sigma, lower, upper);
+        b_star(i) = xb + nu(i);
+    end
+    
+    % Step 2: Update beta (normal-normal conjugacy)
+    V_post = inv(V0_inv + (X'*X) / sigma^2);
+    mu_post = V_post * (V0_inv * mu_prior + (X'*b_star) / sigma^2);
+    beta = mvnrnd(mu_post, V_post);
+    
+    % Step 3: Update sigma^2 (inverse-gamma conjugacy)
+    a_post = a_prior + N/2;
+    b_post = b_prior + sum(nu.^2)/2;
+    sigma_sq = 1 / gamrnd(a_post, 1/b_post);  % Inverse-gamma
+    sigma = sqrt(sigma_sq);
+    
+    beta_chain(t,:) = beta;
+    sigma_chain(t) = sigma;
+end
+\end{verbatim}
+
+\subsection{Task B: Type-Specific Cutoffs}
+
+Task B extends the model to two bidder types (S and F) with separate cutoffs. The sampler runs independent Gibbs updates for each type:
+
+\begin{lstlisting}
+class TaskBMCMCSampler:
+    """Estimates (mu_S, sigma_S) and (mu_F, sigma_F) separately.
+    
+    Uses observed auctions (reach the formal stage), then for each type keeps
+    auctions that provide any information (one- or two-sided bounds):
+    - S_auctions: auctions where (L_S, U_S) are not both infinite
+    - F_auctions: auctions where (L_F, U_F) are not both infinite
+    """
+    
+    def run_chain(self, chain_id):
+        for t in range(n_iterations):
+            # Update Type S parameters
+            for i in S_auctions:
+                nu_S[i] = sample_truncnorm(0, sigma_S, L_S[i]-mu_S, U_S[i]-mu_S)
+            # ... conjugate update for (mu_S, sigma_S)
+            
+            # Update Type F parameters  
+            for i in F_auctions:
+                nu_F[i] = sample_truncnorm(0, sigma_F, L_F[i]-mu_F, U_F[i]-mu_F)
+            # ... conjugate update for (mu_F, sigma_F)
+\end{lstlisting}
+
+%=============================================================================
+\section{Module Deep Dive: \texttt{analysis.py} and \texttt{visualization.py}}
+%=============================================================================
+
+\subsection{Computing Performance Metrics}
+
+The \texttt{TaskAResultsAnalyzer} class computes:
+
+\begin{lstlisting}
+def compute_metrics(self):
+    mu_samples = self.results['mu_samples']
+    
+    mu_hat = np.mean(mu_samples)           # Posterior mean
+    mu_std = np.std(mu_samples)            # Posterior std
+    
+    # Bias and RMSE
+    bias = mu_hat - self.true_mu           # Point estimate - truth
+    rmse = np.sqrt(np.mean((mu_samples - self.true_mu)**2))
+    
+    # 95% Credible Interval  
+    ci_lower = np.percentile(mu_samples, 2.5)
+    ci_upper = np.percentile(mu_samples, 97.5)
+    
+    # Coverage: does CI contain true value?
+    coverage = 1 if ci_lower <= self.true_mu <= ci_upper else 0
+    
+    return {'mu_hat': mu_hat, 'bias': bias, 'rmse': rmse, 
+            'ci': (ci_lower, ci_upper), 'coverage': coverage}
+\end{lstlisting}
+
+\subsection{Diagnostic Plots}
+
+The visualization module generates:
+\begin{itemize}
+    \item \textbf{Trace plots}: Show MCMC chain evolution (check for convergence)
+    \item \textbf{Posterior histograms}: Distribution of parameter estimates
+    \item \textbf{Interval plots}: Visualize $[L_i, U_i]$ bounds across auctions
+\end{itemize}
+
+%=============================================================================
+\section{Module Deep Dive: \texttt{numba\_kernels.py}}
+%=============================================================================
+
+Numba is a Just-In-Time (JIT) compiler that converts Python loops to fast machine code (like MATLAB's MEX files or Coder).
+
+\begin{lstlisting}
+from numba import njit
+
+@njit  # Compile this function to machine code
+def task_a_run_chain_intercept(L, U, n_iter, mu_prior, sigma_prior, 
+                                a_prior, b_prior, mu_init, sigma_init, seed):
+    """Fast MCMC chain for intercept-only model.
+    
+    This is ~10-100x faster than pure Python loops.
+    """
+    np.random.seed(seed)
+    mu_chain = np.zeros(n_iter)
+    sigma_chain = np.zeros(n_iter)
+    
+    mu = mu_init
+    sigma = sigma_init
+    N = len(L)
+    
+    for t in range(n_iter):
+        # Fast Gibbs updates in compiled code
+        nu_sum_sq = 0.0
+        b_star_sum = 0.0
+        
+        for i in range(N):
+            # Sample truncated normal (vectorized in compiled code)
+            lower = (L[i] - mu) / sigma
+            upper = (U[i] - mu) / sigma
+            nu_i = sample_truncnorm_scalar(lower, upper) * sigma
+            nu_sum_sq += nu_i * nu_i
+            b_star_sum += mu + nu_i
+        
+        # ... rest of Gibbs updates
+    
+    return mu_chain, sigma_chain
+\end{lstlisting}
+
+\textbf{Note}: The first time you run the code, Numba compiles the kernels which takes 10-30 seconds. Subsequent runs are fast.
+
+%=============================================================================
+\section{Windows Installation Guide}
+%=============================================================================
+
+This section provides step-by-step instructions for setting up the code on a fresh Windows machine.
+
+\subsection{Step 1: Install Python}
+
+\begin{enumerate}
+    \item Go to \url{https://www.python.org/downloads/}
+    \item Download Python 3.9 or later (3.11 recommended)
+    \item Run the installer
+    \item \textbf{IMPORTANT}: Check ``Add Python to PATH'' at the bottom of the first screen
+    \item Click ``Install Now''
+    \item Verify installation: Open Command Prompt and type:
+\begin{verbatim}
+python --version
+\end{verbatim}
+    You should see something like \texttt{Python 3.11.5}
+\end{enumerate}
+
+\subsection{Step 2: Download the Code}
+
+Copy the \texttt{Directory} folder to your computer, e.g., to \path{C:\Users\YourName\Documents\informal_bids}
+
+\subsection{Step 3: Create Virtual Environment}
+
+Open Command Prompt (or PowerShell) and run:
+
+\begin{verbatim}
+cd C:\Users\YourName\Documents\informal_bids
+
+# Create virtual environment
+python -m venv .venv
+
+# Activate it
+.venv\Scripts\activate
+
+# You should see (.venv) at the start of your prompt
+\end{verbatim}
+
+\subsection{Step 4: Install Dependencies}
+
+With the virtual environment activated:
+
+\begin{verbatim}
+pip install -r requirements.txt
+pip install -e .
+\end{verbatim}
+
+This installs: numpy, scipy, matplotlib, pandas, numba, seaborn.
+
+\subsection{Step 5: Run the Simulations}
+
+\begin{verbatim}
+# Run Task A baseline
+task-a-baseline
+
+# Run Task B baseline  
+task-b-baseline
+
+# Run sensitivity analyses
+task-a-sensitivity
+task-b-sensitivity
+\end{verbatim}
+
+Outputs are saved to the \texttt{outputs/} folder.
+
+%=============================================================================
+\section{VS Code IDE Setup (Recommended)}
+%=============================================================================
+
+Visual Studio Code provides a user-friendly development environment similar to MATLAB's editor.
+
+\subsection{Install VS Code}
+
+\begin{enumerate}
+    \item Download from \url{https://code.visualstudio.com/}
+    \item Run installer with default options
+\end{enumerate}
+
+\subsection{Install Python Extension}
+
+\begin{enumerate}
+    \item Open VS Code
+    \item Press \texttt{Ctrl+Shift+X} to open Extensions
+    \item Search for ``Python'' and install the Microsoft Python extension
+\end{enumerate}
+
+\subsection{Open the Project}
+
+\begin{enumerate}
+    \item File $\rightarrow$ Open Folder
+    \item Select the \texttt{informal\_bids} folder
+    \item VS Code will detect the virtual environment
+\end{enumerate}
+
+\subsection{Select Python Interpreter}
+
+\begin{enumerate}
+    \item Press \texttt{Ctrl+Shift+P}
+    \item Type ``Python: Select Interpreter''
+    \item Choose the one in \texttt{.venv} folder
+\end{enumerate}
+
+\subsection{Run Scripts}
+
+\begin{itemize}
+    \item Open a Python file
+    \item Click the green play button (top right) or press \texttt{F5}
+    \item Or use the integrated terminal: \texttt{Ctrl+\`{}}
+\end{itemize}
+
+%=============================================================================
+\section{Command-Line Usage}
+%=============================================================================
+
+\subsection{PowerShell Basics}
+
+\begin{verbatim}
+# Navigate to project folder
+cd C:\Users\YourName\Documents\informal_bids
+
+# Activate virtual environment
+.venv\Scripts\activate
+
+# Run baseline simulations
+task-a-baseline
+task-b-baseline
+
+# Run sensitivity analyses  
+task-a-sensitivity
+task-b-sensitivity
+
+# Deactivate when done
+deactivate
+\end{verbatim}
+
+\subsection{Alternative: Run via Python Module}
+
+If the CLI commands don't work:
+
+\begin{verbatim}
+# Set Python path and run module
+set PYTHONPATH=src
+python -m informal_bids.cli
+\end{verbatim}
+
+Or run specific functions:
+
+\begin{verbatim}
+python -c "from informal_bids.cli import task_a_baseline; task_a_baseline()"
+\end{verbatim}
+
+%=============================================================================
+\section{Troubleshooting}
+%=============================================================================
+
+\subsection{``python'' is not recognized}
+
+\begin{itemize}
+    \item Python wasn't added to PATH during installation
+    \item Reinstall Python and check ``Add Python to PATH''
+    \item Or add manually: System Properties $\rightarrow$ Environment Variables $\rightarrow$ Path
+\end{itemize}
+
+\subsection{``pip'' is not recognized}
+
+Use \texttt{python -m pip} instead of \texttt{pip}:
+\begin{verbatim}
+python -m pip install -r requirements.txt
+\end{verbatim}
+
+\subsection{Import errors}
+
+\begin{itemize}
+    \item Make sure virtual environment is activated (\texttt{(.venv)} in prompt)
+    \item Install the package: \texttt{pip install -e .}
+\end{itemize}
+
+\subsection{Numba compilation takes forever}
+
+\begin{itemize}
+    \item First run compiles JIT kernels (10-30 seconds)
+    \item Subsequent runs use cached compiled code
+    \item If stuck, set \texttt{NUMBA\_DISABLE\_JIT=1} to use pure Python (slower)
+\end{itemize}
+
+\subsection{Plots don't appear}
+
+\begin{itemize}
+    \item Plots are saved to \texttt{outputs/} folder, not displayed
+    \item Check \texttt{outputs/baseline/task\_a/} for PNG files
+\end{itemize}
+
+\subsection{Out of memory on large runs}
+
+\begin{itemize}
+    \item Reduce \texttt{n\_iterations} in \texttt{MCMCConfig}
+    \item Increase \texttt{thinning} parameter
+\end{itemize}
+
+%=============================================================================
+\section{Summary}
+%=============================================================================
+
+This report documented the Python codebase for MCMC estimation of informal bid admission cutoffs:
+
+\begin{itemize}
+    \item \textbf{Core algorithm}: Gibbs sampling with data augmentation for interval-censored observations
+    \item \textbf{Key modules}: \texttt{data.py} (structures), \texttt{samplers.py} (MCMC), \texttt{cli.py} (entry points)
+    \item \textbf{MATLAB equivalents}: Python code maps closely to MATLAB with numpy arrays and scipy distributions
+    \item \textbf{Windows setup}: Install Python, create virtual environment, install dependencies, run CLI commands
+\end{itemize}
+
+For questions about specific code sections, refer to the inline comments in the source files or the module deep-dives in Sections 4--6.
+
+\end{document}
