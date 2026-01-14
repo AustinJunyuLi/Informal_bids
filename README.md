@@ -45,12 +45,14 @@ Outputs are written to `outputs/` by default.
 
 ```
 src/informal_bids/              # Core package code (Python)
-docs/                           # Meeting notes + shared model documentation
-external/                       # Reference papers / Matlab code / packages
-contrib/                        # Personal scratch space (non-canonical)
+meeting/                        # Meeting notes (by date)
+contrib/austin/                 # Austin scratch/drafts (non-canonical)
+contrib/alex/                   # Alex scratch/drafts + reference materials
+contrib/alex/external/          # Alex-provided papers / Matlab reference code
 data/                           # (Future) raw/processed data
 outputs/                        # Generated plots/results (ignored)
 reports/                        # LaTeX reports / PDFs
+
 ```
 
 ## Reproducibility

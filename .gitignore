@@ -17,6 +17,7 @@ reports/
 # Meeting docs and contributions (synced via Dropbox)
 docs/
 contrib/
+meeting/
 
 # Editor / local tooling
 .vscode/
