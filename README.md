@@ -3,6 +3,10 @@
 Simulation and MCMC estimation for informal bid admission cutoffs in M&A style auctions.
 This repository currently runs simulation-only experiments (no real data yet).
 
+> **This branch (`cond`)** implements the Jan 14, 2026 Task A selection correction:
+> conditional-probability + independence Metropolis–Hastings (selection-aware) for the
+> cutoff draw. The naive baseline lives on branch `basic`.
+
 ## Quick start
 
 1) Create/activate a Python environment.
@@ -32,6 +36,10 @@ task-b-baseline
 task-a-sensitivity
 task-b-sensitivity
 ```
+
+Note (this branch): `task-a-sensitivity` runs the conversion diagnostic cutoffs
+`b* ∈ {1.2, 1.1}` and writes outputs with `bstar_1p2` / `bstar_1p1` suffixes under
+`outputs/sensitivity/task_a/`.
 
 If you do not want to install the package, you can also run via module path:
 
@@ -70,32 +78,36 @@ Parametric cutoff model:
 - nu_i ~ N(0, sigma^2)
 - nu_i in [L_i - X_i' beta, U_i - X_i' beta]
 
-Gibbs sampling with data augmentation (current baseline):
+Estimation via data augmentation (selection-aware MH-within-Gibbs on this branch):
 
-1) Sample nu_i for each auction from a truncated normal with bounds implied by L_i/U_i
-2) Update beta using a conjugate normal posterior
-3) Update sigma^2 using a conjugate inverse-gamma posterior
+1) Sample latent cutoffs b*_i via independence MH, using the naive truncated-normal
+   draw as the proposal and applying the selection penalty via Pr(S=1|b*_i).
+2) Update beta using a conjugate normal posterior given the b*_i draws.
+3) Update sigma^2 using a conjugate inverse-gamma posterior from (b*_i − X_i' beta).
 
 Annotated core loop (conceptual):
 
 ```python
 for t in range(n_iterations):
-    # Step 1: sample latent nu_i subject to interval bounds
+    # Step 1: update latent cutoffs b*_i with selection correction
     for i in range(N):
         xb = X[i] @ beta
-        lower = L[i] - xb
-        upper = U[i] - xb
-        nu[i] = sample_truncated_normal(0.0, sigma, lower, upper)
-        b_star[i] = xb + nu[i]
+        b_prop = sample_truncated_normal(xb, sigma, L[i], U[i])
+
+        # Baseline debugging case (b^I = v):
+        #   Pr(S=1|b) = 1 - Phi((b - mu_v)/sigma_v)^J
+        alpha = min(1.0, Pr_select(b_star[i]) / Pr_select(b_prop))
+        if rand() < alpha:
+            b_star[i] = b_prop
 
     # Step 2: beta | b_star ~ Normal (conjugate update)
     V_post = inv(V0_inv + (X.T @ X) / (sigma ** 2))
     beta_post = V_post @ (V0_inv @ beta_prior_mean + (X.T @ b_star) / (sigma ** 2))
     beta = mvn(beta_post, V_post)
 
-    # Step 3: sigma^2 | nu ~ InvGamma (conjugate update)
+    # Step 3: sigma^2 | (b_star - X beta) ~ InvGamma (conjugate update)
     a_post = a_prior + N / 2
-    b_post = b_prior + 0.5 * sum(nu ** 2)
+    b_post = b_prior + 0.5 * sum((b_star - X @ beta) ** 2)
     sigma = sqrt(invgamma(a_post, b_post))
 ```
 
@@ -103,13 +115,14 @@ MATLAB pseudocode equivalent:
 
 ```matlab
 for t = 1:n_iterations
-    % Step 1: sample nu_i from truncated normal
+    % Step 1: update b*_i with selection-aware MH
     for i = 1:N
         xb = X(i,:) * beta;
-        lower = L(i) - xb;
-        upper = U(i) - xb;
-        nu(i) = sample_truncnorm(0, sigma, lower, upper);
-        b_star(i) = xb + nu(i);
+        b_prop = sample_truncnorm(xb, sigma, L(i), U(i));
+        alpha = min(1, Pr_select(b_star(i)) / Pr_select(b_prop));
+        if rand() < alpha
+            b_star(i) = b_prop;
+        end
     end
 
     % Step 2: update beta (normal-normal)
@@ -119,7 +132,7 @@ for t = 1:n_iterations
 
     % Step 3: update sigma^2 (inverse-gamma)
     a_post = a_prior + N/2;
-    b_post = b_prior + sum(nu.^2)/2;
+    b_post = b_prior + sum((b_star - X*beta).^2)/2;
     sigma_sq = 1 / gamrnd(a_post, 1/b_post);
     sigma = sqrt(sigma_sq);
 end
@@ -373,7 +386,7 @@ reports/                        # LaTeX reports / PDFs
 
 ## Summary
 
-This codebase implements Gibbs sampling with data augmentation to estimate informal-bid
-admission cutoffs under interval restrictions. It provides Task A (single cutoff) and
-Task B (type-specific cutoffs) simulations, sensitivity analyses, and a full set of
-diagnostics and plots for evaluating estimator performance.
+This branch implements selection-aware MH-within-Gibbs (conditional-probability correction)
+to estimate informal-bid admission cutoffs under interval restrictions with formal-stage
+conditioning. It provides Task A (single cutoff) and Task B (type-specific cutoffs)
+simulations, sensitivity analyses, and diagnostics/plots for evaluating estimator performance.
