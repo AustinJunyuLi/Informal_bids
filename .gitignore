@@ -12,7 +12,16 @@ venv/
 
 # Outputs and reports
 outputs/
-reports/
+
+# Track report PDFs, ignore LaTeX sources and build artifacts
+reports/**/*.tex
+reports/**/*.aux
+reports/**/*.log
+reports/**/*.out
+reports/**/*.fdb_latexmk
+reports/**/*.fls
+reports/**/*.synctex.gz
+reports/**/figures/
 
 # Meeting docs and contributions (synced via Dropbox)
 docs/
