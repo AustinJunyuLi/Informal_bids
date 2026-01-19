@@ -3,6 +3,10 @@
 Simulation and MCMC estimation for informal bid admission cutoffs in M&A style auctions.
 This repository currently runs simulation-only experiments (no real data yet).
 
+> **This branch (`basic`)** is the naive baseline (truncated-normal Gibbs cutoff draw)
+> used in the Dec 18, 2025 report. The selection-aware MH correction lives on branch
+> `cond`.
+
 ## Quick start
 
 1) Create/activate a Python environment.
@@ -373,7 +377,7 @@ reports/                        # LaTeX reports / PDFs
 
 ## Summary
 
-This codebase implements Gibbs sampling with data augmentation to estimate informal-bid
-admission cutoffs under interval restrictions. It provides Task A (single cutoff) and
-Task B (type-specific cutoffs) simulations, sensitivity analyses, and a full set of
-diagnostics and plots for evaluating estimator performance.
+This branch implements the naive Gibbs sampler (truncated-normal cutoff draw) with data
+augmentation to estimate informal-bid admission cutoffs under interval restrictions. It
+provides Task A (single cutoff) and Task B (type-specific cutoffs) simulations, sensitivity
+analyses, and diagnostics/plots for evaluating estimator performance.
