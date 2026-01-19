@@ -10,6 +10,7 @@ task_a_mcmc.py and task_b_mcmc.py, including:
 
 import numpy as np
 from scipy.stats import truncnorm
+from scipy.special import ndtr
 from typing import List
 
 
@@ -29,6 +30,44 @@ def sample_truncated_normal(mean: float, std: float,
     a = (lower - mean) / std
     b = (upper - mean) / std
     return truncnorm.rvs(a, b, loc=mean, scale=std)
+
+
+def selection_prob_at_least_one_exceeds_cutoff(
+    cutoff: float,
+    bid_mu: float,
+    bid_sigma: float,
+    n_bidders: int,
+    *,
+    eps: float = 1e-12,
+) -> float:
+    """Selection probability Pr(S=1 | cutoff) in the baseline debugging case.
+
+    Baseline case: informal bids equal valuations,
+        b^I_ij = v_ij,  v_ij ~ Normal(bid_mu, bid_sigma^2).
+
+    With n_bidders bidders, the auction is observed (reaches the formal stage)
+    if at least one bidder is admitted:
+        S=1  <=>  exists j: b^I_ij >= cutoff.
+
+    Thus:
+        Pr(S=1 | cutoff) = 1 - Pr(all bids < cutoff)
+                         = 1 - Phi((cutoff - bid_mu) / bid_sigma) ^ n_bidders.
+    """
+    if n_bidders <= 0:
+        raise ValueError("n_bidders must be positive")
+    if bid_sigma <= 0:
+        raise ValueError("bid_sigma must be positive")
+
+    z = (float(cutoff) - float(bid_mu)) / float(bid_sigma)
+    p_below = float(ndtr(z))
+    p_select = 1.0 - (p_below ** int(n_bidders))
+
+    # Avoid division-by-zero / numerical issues in MH ratios.
+    if p_select < eps:
+        return float(eps)
+    if p_select > 1.0:
+        return 1.0
+    return float(p_select)
 
 
 def gelman_rubin(chains: List[np.ndarray]) -> float:

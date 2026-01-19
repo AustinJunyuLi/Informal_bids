@@ -14,7 +14,11 @@ from scipy.stats import invgamma
 from typing import List, Dict, Tuple, Optional
 
 from .data import TaskAAuctionData, TaskBAuctionData, MCMCConfig
-from .utils import sample_truncated_normal, gelman_rubin
+from .utils import (
+    sample_truncated_normal,
+    gelman_rubin,
+    selection_prob_at_least_one_exceeds_cutoff,
+)
 
 # Numba acceleration (optional)
 try:
@@ -33,12 +37,21 @@ class TaskAMCMCSampler:
         nu_i ~ N(0, sigma^2)
         nu_i in [L_i - mu, U_i - mu]
 
-    Uses Gibbs sampling with data augmentation.
+    Uses data augmentation with a selection-aware cutoff update.
     """
 
-    def __init__(self, auctions: List[TaskAAuctionData], config: MCMCConfig):
+    def __init__(
+        self,
+        auctions: List[TaskAAuctionData],
+        config: MCMCConfig,
+        *,
+        bid_mu: float,
+        bid_sigma: float,
+    ):
         self.auctions = auctions
         self.config = config
+        self.bid_mu = float(bid_mu)
+        self.bid_sigma = float(bid_sigma)
 
         # Use auctions observed at the formal stage (at least one admitted).
         # For Task A, this corresponds to auctions with a finite upper bound U_i.
@@ -54,19 +67,22 @@ class TaskAMCMCSampler:
             self.X = np.vstack([a.X_i for a in self.working_auctions])
             self.L = np.array([a.L_i for a in self.working_auctions], dtype=np.float64)
             self.U = np.array([a.U_i for a in self.working_auctions], dtype=np.float64)
+            self.n_bidders = np.array([len(a.bids) for a in self.working_auctions], dtype=np.int64)
         elif auctions:
             self.k = int(auctions[0].X_i.shape[0])
             self.X = np.empty((0, self.k))
             self.L = np.empty((0,), dtype=np.float64)
             self.U = np.empty((0,), dtype=np.float64)
+            self.n_bidders = np.empty((0,), dtype=np.int64)
         else:
             self.k = 1
             self.X = np.empty((0, self.k))
             self.L = np.empty((0,), dtype=np.float64)
             self.U = np.empty((0,), dtype=np.float64)
+            self.n_bidders = np.empty((0,), dtype=np.int64)
 
         print(
-            f"MCMC using {self.N} observed auctions "
+            f"MCMC (selection-aware) using {self.N} observed auctions "
             f"(two-sided: {self.n_two_sided}, one-sided upper: {self.n_one_sided_upper}); "
             f"dropped {self.n_dropped_all_reject} all-reject"
         )
@@ -117,39 +133,60 @@ class TaskAMCMCSampler:
         if HAS_NUMBA and self.k == 1 and task_a_run_chain_intercept is not None:
             seed = int(np.random.randint(0, 2**31 - 1)) + 9973 * int(chain_id)
             mu_chain_1d, sigma_chain = task_a_run_chain_intercept(
-                self.L, self.U, int(self.config.n_iterations),
+                self.L,
+                self.U,
+                self.n_bidders,
+                int(self.config.n_iterations),
                 float(beta_prior_mean[0]), float(beta_prior_std[0]),
                 float(a_prior), float(b_prior),
-                float(beta[0]), float(sigma), seed,
+                float(beta[0]),
+                float(sigma),
+                float(self.bid_mu),
+                float(self.bid_sigma),
+                seed,
             )
             beta_chain = mu_chain_1d.reshape((-1, 1))
             print(f"Chain {chain_id} complete!", flush=True)
             return beta_chain, sigma_chain
 
+        # Initialize latent cutoffs b*_i
+        b_star = np.zeros(self.N, dtype=np.float64)
+        for i, auction in enumerate(self.working_auctions):
+            xb = float(auction.X_i @ beta)
+            b_star[i] = sample_truncated_normal(xb, sigma, auction.L_i, auction.U_i)
+
         # Gibbs sampling
         for t in range(self.config.n_iterations):
-            # Step 1: Sample latent nu_i for each auction
-            nu_samples = np.zeros(self.N)
-            b_star_samples = np.zeros(self.N)
-
+            # Step 1: Sample latent b*_i via independence MH with selection correction.
+            # Proposal: naive truncated normal (the previous baseline).
+            accept_count = 0
             for i, auction in enumerate(self.working_auctions):
                 xb = float(auction.X_i @ beta)
-                lower = auction.L_i - xb
-                upper = auction.U_i - xb
-                nu_i = sample_truncated_normal(0, sigma, lower, upper)
-                nu_samples[i] = nu_i
-                b_star_samples[i] = xb + nu_i
+                b_prop = sample_truncated_normal(xb, sigma, auction.L_i, auction.U_i)
+
+                p_old = selection_prob_at_least_one_exceeds_cutoff(
+                    b_star[i], self.bid_mu, self.bid_sigma, int(self.n_bidders[i])
+                )
+                p_prop = selection_prob_at_least_one_exceeds_cutoff(
+                    b_prop, self.bid_mu, self.bid_sigma, int(self.n_bidders[i])
+                )
+
+                alpha = min(1.0, p_old / p_prop)
+                if np.random.rand() < alpha:
+                    b_star[i] = b_prop
+                    accept_count += 1
 
             # Step 2: Update beta (conjugate normal update)
             XtX = self.X.T @ self.X
             V_post = np.linalg.inv(V0_inv + XtX / (sigma ** 2))
             beta_post = V_post @ (V0_inv @ beta_prior_mean +
-                                  (self.X.T @ b_star_samples) / (sigma ** 2))
+                                  (self.X.T @ b_star) / (sigma ** 2))
             beta = np.random.multivariate_normal(beta_post, V_post)
 
             # Step 3: Update sigma^2 (conjugate inverse-gamma update)
+            resid = b_star - (self.X @ beta)
             a_post = a_prior + self.N / 2
-            b_post = b_prior + np.sum(nu_samples ** 2) / 2
+            b_post = b_prior + np.sum(resid ** 2) / 2
             sigma_sq = invgamma.rvs(a_post, scale=b_post)
             sigma = np.sqrt(sigma_sq)
 
@@ -157,8 +194,10 @@ class TaskAMCMCSampler:
             sigma_chain[t] = sigma
 
             if (t + 1) % 5000 == 0:
+                accept_rate = accept_count / self.N if self.N > 0 else 0.0
                 print(f"  Iteration {t+1}/{self.config.n_iterations}, "
-                      f"mu0={beta[0]:.3f}, sigma={sigma:.3f}", flush=True)
+                      f"mu0={beta[0]:.3f}, sigma={sigma:.3f}, "
+                      f"mh_accept={accept_rate:.2f}", flush=True)
 
         print(f"Chain {chain_id} complete!", flush=True)
         return beta_chain, sigma_chain

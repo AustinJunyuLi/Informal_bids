@@ -41,7 +41,12 @@ class TaskASensitivityAnalysis:
             # Not enough observed auctions
             return {
                 'N': dgp_params.N,
+                'b_star': dgp_params.b_star,
                 'rep_id': rep_id,
+                'n_observed': stats.get('n_observed', len(auctions)),
+                'n_initiated': stats.get('n_initiated', np.nan),
+                'n_dropped_all_reject': stats.get('n_dropped_all_reject', np.nan),
+                'keep_rate_pct': stats.get('keep_rate_pct', np.nan),
                 'n_complete': n_complete,
                 'pct_incomplete': pct_incomplete,
                 'converged': False,
@@ -55,7 +60,12 @@ class TaskASensitivityAnalysis:
             }
 
         # Run MCMC (sampler will include one-sided upper bounds and drop all-reject)
-        sampler = TaskAMCMCSampler(auctions, mcmc_config)
+        sampler = TaskAMCMCSampler(
+            auctions,
+            mcmc_config,
+            bid_mu=dgp_params.mu_v,
+            bid_sigma=dgp_params.sigma_v,
+        )
         results = sampler.run()
 
         mu_samples = results['mu_samples']
@@ -71,7 +81,12 @@ class TaskASensitivityAnalysis:
 
         return {
             'N': dgp_params.N,
+            'b_star': dgp_params.b_star,
             'rep_id': rep_id,
+            'n_observed': stats.get('n_observed', len(auctions)),
+            'n_initiated': stats.get('n_initiated', np.nan),
+            'n_dropped_all_reject': stats.get('n_dropped_all_reject', np.nan),
+            'keep_rate_pct': stats.get('keep_rate_pct', np.nan),
             'n_complete': n_complete,
             'pct_incomplete': pct_incomplete,
             'converged': rhat < 1.1,
@@ -108,6 +123,7 @@ class TaskASensitivityAnalysis:
         print("="*70)
         print(f"Replications per N: {self.n_replications}")
         print(f"Sample sizes: {N_values}")
+        print(f"True cutoff (b*): {b_star}")
         print()
 
         mcmc_config = MCMCConfig(
@@ -149,6 +165,7 @@ class TaskASensitivityAnalysis:
         summary = df.groupby('N').agg({
             'n_complete': 'mean',
             'pct_incomplete': 'mean',
+            'keep_rate_pct': 'mean',
             'bias': ['mean', 'std'],
             'rmse': ['mean', 'std'],
             'ci_width': ['mean', 'std'],

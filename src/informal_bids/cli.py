@@ -59,7 +59,12 @@ def task_a_baseline():
     print(f"  One-sided:  {summary['n_incomplete']} ({summary['pct_incomplete']:.1f}%)")
     print(f"  Initiated:  {summary['n_initiated']} (dropped all-reject: {summary['n_dropped_all_reject']}, keep rate: {summary['keep_rate_pct']:.1f}%)")
 
-    sampler = TaskAMCMCSampler(auctions, mcmc_config)
+    sampler = TaskAMCMCSampler(
+        auctions,
+        mcmc_config,
+        bid_mu=dgp_params.mu_v,
+        bid_sigma=dgp_params.sigma_v,
+    )
     results = sampler.run()
 
     analyzer = TaskAResultsAnalyzer(results, dgp_params.cutoff_at_mean_x())
@@ -155,42 +160,49 @@ def task_a_sensitivity():
     TASK_A_SENSITIVITY_DIR.mkdir(parents=True, exist_ok=True)
 
     analysis = TaskASensitivityAnalysis(n_replications=10)
-    df = analysis.sensitivity_sample_size()
 
-    # Save CSV
-    csv_path = TASK_A_SENSITIVITY_DIR / "sample_size_sensitivity.csv"
-    df.to_csv(csv_path, index=False)
-    print(f"\nResults saved to {csv_path}")
+    # Meeting (2026-01-14) conversion diagnostic: higher conversion via lower true cutoffs.
+    for b_star in (1.2, 1.1):
+        df = analysis.sensitivity_sample_size(b_star=b_star)
+        tag = str(b_star).replace('.', 'p')
 
-    # Generate plots
-    plot_path = TASK_A_SENSITIVITY_DIR / "sample_size_sensitivity.png"
-    analysis.plot_results(df, str(plot_path))
+        # Save CSV
+        csv_path = TASK_A_SENSITIVITY_DIR / f"sample_size_sensitivity_bstar_{tag}.csv"
+        df.to_csv(csv_path, index=False)
+        print(f"\nResults saved to {csv_path}")
 
-    # Save summary
-    summary_path = TASK_A_SENSITIVITY_DIR / "summary_table.csv"
-    summary = df.groupby('N').agg({
-        'n_complete': ['mean', 'std'],
-        'pct_incomplete': ['mean', 'std'],
-        'bias': ['mean', 'std'],
-        'rmse': ['mean', 'std'],
-        'ci_width': ['mean', 'std'],
-        'coverage': 'mean',
-        'rhat': 'mean'
-    }).round(4)
-    summary.to_csv(summary_path)
-    print(f"Summary statistics saved to {summary_path}")
+        # Generate plots
+        plot_path = TASK_A_SENSITIVITY_DIR / f"sample_size_sensitivity_bstar_{tag}.png"
+        analysis.plot_results(df, str(plot_path))
 
-    # Highlight N=20 results
-    print("\n" + "="*70)
-    print("N=20 STRESS TEST RESULTS (Critical for real data)")
-    print("="*70)
-    n20_results = df[df['N'] == 20]
-    print(f"Mean bias: {n20_results['bias'].mean():.4f}")
-    print(f"Mean RMSE: {n20_results['rmse'].mean():.4f}")
-    print(f"Coverage rate: {n20_results['coverage'].mean()*100:.1f}%")
-    print(f"Mean CI width: {n20_results['ci_width'].mean():.4f}")
-    print(f"Mean % incomplete: {n20_results['pct_incomplete'].mean():.1f}%")
-    print(f"Mean # complete auctions: {n20_results['n_complete'].mean():.1f}")
+        # Save summary (include conversion diagnostics)
+        summary_path = TASK_A_SENSITIVITY_DIR / f"summary_table_bstar_{tag}.csv"
+        summary = df.groupby('N').agg({
+            'n_complete': ['mean', 'std'],
+            'pct_incomplete': ['mean', 'std'],
+            'keep_rate_pct': ['mean', 'std'],
+            'n_initiated': ['mean', 'std'],
+            'bias': ['mean', 'std'],
+            'rmse': ['mean', 'std'],
+            'ci_width': ['mean', 'std'],
+            'coverage': 'mean',
+            'rhat': 'mean'
+        }).round(4)
+        summary.to_csv(summary_path)
+        print(f"Summary statistics saved to {summary_path}")
+
+        # Highlight N=20 results
+        print("\n" + "="*70)
+        print(f"N=20 STRESS TEST RESULTS (b*={b_star})")
+        print("="*70)
+        n20_results = df[df['N'] == 20]
+        print(f"Mean keep rate (conversion): {n20_results['keep_rate_pct'].mean():.1f}%")
+        print(f"Mean bias: {n20_results['bias'].mean():.4f}")
+        print(f"Mean RMSE: {n20_results['rmse'].mean():.4f}")
+        print(f"Coverage rate: {n20_results['coverage'].mean()*100:.1f}%")
+        print(f"Mean CI width: {n20_results['ci_width'].mean():.4f}")
+        print(f"Mean % incomplete: {n20_results['pct_incomplete'].mean():.1f}%")
+        print(f"Mean # complete auctions: {n20_results['n_complete'].mean():.1f}")
 
     print("\n" + "="*70)
     print("TASK A SENSITIVITY ANALYSIS COMPLETE!")

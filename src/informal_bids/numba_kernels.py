@@ -134,9 +134,28 @@ def invgamma_rvs(shape: float, scale: float) -> float:
 
 
 @njit(cache=True)
+def selection_prob_at_least_one_exceeds_cutoff(
+    cutoff: float,
+    bid_mu: float,
+    bid_sigma: float,
+    n_bidders: int,
+    eps: float,
+) -> float:
+    z = (cutoff - bid_mu) / bid_sigma
+    p_below = norm_cdf(z)
+    p_select = 1.0 - (p_below ** n_bidders)
+    if p_select < eps:
+        return eps
+    if p_select > 1.0:
+        return 1.0
+    return p_select
+
+
+@njit(cache=True)
 def task_a_run_chain_intercept(
     L: np.ndarray,
     U: np.ndarray,
+    n_bidders: np.ndarray,
     n_iterations: int,
     mu_prior_mean: float,
     mu_prior_std: float,
@@ -144,9 +163,11 @@ def task_a_run_chain_intercept(
     sigma_prior_b: float,
     mu_init: float,
     sigma_init: float,
+    bid_mu: float,
+    bid_sigma: float,
     seed: int,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Task A Gibbs sampler for intercept-only cutoff model."""
+    """Task A sampler for intercept-only cutoff model (selection-aware MH within Gibbs)."""
     np.random.seed(seed)
 
     N = L.shape[0]
@@ -160,17 +181,34 @@ def task_a_run_chain_intercept(
     a_prior = float(sigma_prior_a)
     b_prior = float(sigma_prior_b)
 
-    nu = np.zeros(N, dtype=np.float64)
+    eps_select = 1e-12
+
+    b_star = np.zeros(N, dtype=np.float64)
+    for i in range(N):
+        a = (L[i] - mu) / sigma
+        b = (U[i] - mu) / sigma
+        b_star[i] = mu + truncnorm_std_rvs(a, b) * sigma
 
     for t in range(n_iterations):
         b_star_sum = 0.0
-        # Step 1: sample nu_i
+        # Step 1: update b*_i via independence MH
         for i in range(N):
             a = (L[i] - mu) / sigma
             b = (U[i] - mu) / sigma
-            nu_i = truncnorm_std_rvs(a, b) * sigma
-            nu[i] = nu_i
-            b_star_sum += mu + nu_i
+            b_prop = mu + truncnorm_std_rvs(a, b) * sigma
+
+            p_old = selection_prob_at_least_one_exceeds_cutoff(
+                b_star[i], bid_mu, bid_sigma, int(n_bidders[i]), eps_select
+            )
+            p_prop = selection_prob_at_least_one_exceeds_cutoff(
+                b_prop, bid_mu, bid_sigma, int(n_bidders[i]), eps_select
+            )
+
+            alpha = p_old / p_prop
+            if alpha >= 1.0 or np.random.random() < alpha:
+                b_star[i] = b_prop
+
+            b_star_sum += b_star[i]
 
         # Step 2: update mu
         tau_post_sq = 1.0 / (1.0 / tau_prior_sq + N / (sigma * sigma))
@@ -181,7 +219,8 @@ def task_a_run_chain_intercept(
         a_post = a_prior + 0.5 * N
         ss = 0.0
         for i in range(N):
-            ss += nu[i] * nu[i]
+            diff = b_star[i] - mu
+            ss += diff * diff
         b_post = b_prior + 0.5 * ss
         sigma_sq = invgamma_rvs(a_post, b_post)
         sigma = math.sqrt(sigma_sq)
