@@ -15,7 +15,7 @@ import pandas as pd
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from .data import TaskAAuctionData, TaskBAuctionData, BidderData
+from .data import TaskAAuctionData, TaskBAuctionData
 
 
 class RealDataLoader:
@@ -30,10 +30,10 @@ class RealDataLoader:
         0,1.2,1.5,0.3,-0.2
         1,1.1,1.4,0.1,0.5
 
-    Example CSV format for Task B:
-        auction_id,L_S,U_S,L_F,U_F,covariate_1,covariate_2
-        0,1.3,1.6,1.1,1.4,0.3,-0.2
-        1,1.2,1.5,1.0,1.3,0.1,0.5
+    Task B note (two-stage DGP):
+        The current Task B estimator uses bidder-level informal bids and admitted-only
+        formal bids. A general-purpose CSV loader for that long-format structure is
+        not implemented yet.
     """
 
     @staticmethod
@@ -110,87 +110,18 @@ class RealDataLoader:
     @staticmethod
     def load_task_b_data(
         filepath: str,
-        covariate_cols: Optional[List[str]] = None,
-        L_S_col: str = 'L_S',
-        U_S_col: str = 'U_S',
-        L_F_col: str = 'L_F',
-        U_F_col: str = 'U_F',
-        auction_id_col: str = 'auction_id'
+        **_kwargs,
     ) -> Tuple[List[TaskBAuctionData], dict]:
-        """Load Task B auction data from CSV.
+        """Load Task B auction data from CSV (not implemented).
 
-        Args:
-            filepath: Path to CSV file
-            covariate_cols: List of column names to use as covariates
-            L_S_col, U_S_col: Column names for Type S bounds
-            L_F_col, U_F_col: Column names for Type F bounds
-            auction_id_col: Column name for auction ID
-
-        Returns:
-            Tuple of (list of TaskBAuctionData, summary dict)
+        Task B (two-stage) requires bidder-level informal bids and admitted-only
+        formal bids. Until a long-format loader is defined, use the simulation
+        generators in `data.py`.
         """
-        df = pd.read_csv(filepath)
-
-        auctions = []
-        n_complete_S = 0
-        n_complete_F = 0
-        n_complete_both = 0
-
-        for idx, row in df.iterrows():
-            # Build covariate vector with intercept
-            if covariate_cols:
-                covs = [row[c] for c in covariate_cols]
-                X_i = np.array([1.0] + covs)
-            else:
-                X_i = np.array([1.0])
-
-            # Type S bounds
-            L_S = row[L_S_col] if L_S_col in df.columns else -np.inf
-            U_S = row[U_S_col] if U_S_col in df.columns else np.inf
-            if pd.isna(L_S):
-                L_S = -np.inf
-            if pd.isna(U_S):
-                U_S = np.inf
-            has_S_bounds = np.isfinite(L_S) and np.isfinite(U_S)
-
-            # Type F bounds
-            L_F = row[L_F_col] if L_F_col in df.columns else -np.inf
-            U_F = row[U_F_col] if U_F_col in df.columns else np.inf
-            if pd.isna(L_F):
-                L_F = -np.inf
-            if pd.isna(U_F):
-                U_F = np.inf
-            has_F_bounds = np.isfinite(L_F) and np.isfinite(U_F)
-
-            if has_S_bounds:
-                n_complete_S += 1
-            if has_F_bounds:
-                n_complete_F += 1
-            if has_S_bounds and has_F_bounds:
-                n_complete_both += 1
-
-            auction = TaskBAuctionData(
-                auction_id=int(row[auction_id_col]) if auction_id_col in df.columns else idx,
-                X_i=X_i,
-                bidders=[],  # Real data may not have individual bidders
-                L_S=float(L_S),
-                U_S=float(U_S),
-                L_F=float(L_F),
-                U_F=float(U_F),
-                has_S_bounds=has_S_bounds,
-                has_F_bounds=has_F_bounds
-            )
-            auctions.append(auction)
-
-        summary = {
-            'n_total': len(auctions),
-            'n_complete_both': n_complete_both,
-            'n_complete_S_only': n_complete_S,
-            'n_complete_F_only': n_complete_F,
-            'k_covariates': auctions[0].X_i.shape[0] if auctions else 1
-        }
-
-        return auctions, summary
+        raise NotImplementedError(
+            "Task B two-stage CSV loader is not implemented. "
+            "Use `TaskBDataGenerator` or implement a long-format loader for bidder-level bids."
+        )
 
     @staticmethod
     def validate_bounds(auctions: List, task: str = 'A') -> bool:
@@ -209,10 +140,7 @@ class RealDataLoader:
                     raise ValueError(
                         f"Auction {a.auction_id}: Invalid bounds L={a.L_i} > U={a.U_i}")
             elif task == 'B':
-                if a.has_S_bounds and a.L_S > a.U_S:
+                if np.isfinite(a.L_i) and np.isfinite(a.U_i) and a.L_i > a.U_i:
                     raise ValueError(
-                        f"Auction {a.auction_id}: Invalid S bounds L_S={a.L_S} > U_S={a.U_S}")
-                if a.has_F_bounds and a.L_F > a.U_F:
-                    raise ValueError(
-                        f"Auction {a.auction_id}: Invalid F bounds L_F={a.L_F} > U_F={a.U_F}")
+                        f"Auction {a.auction_id}: Invalid bounds L={a.L_i} > U={a.U_i}")
         return True

@@ -2,7 +2,7 @@
 
 ## Goal (from meeting 2026-01-14)
 Fix the formal-stage selection problem in the baseline debugging case (`b^I = v`) by using the correct conditional likelihood,
-implemented as a selection-penalized cutoff draw (MH/slice). Then run conversion diagnostics at higher conversion rates
+implemented as a selection-penalized cutoff draw (MH-within-Gibbs). Then run conversion diagnostics at higher conversion rates
 (lower true cutoffs).
 
 ## What was implemented (branch `cond`)

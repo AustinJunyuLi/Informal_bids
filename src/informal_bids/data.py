@@ -2,7 +2,7 @@
 Data classes and generators for auction simulations.
 
 This module contains:
-- DGP parameter dataclasses for Task A (single cutoff) and Task B (type-specific)
+- DGP parameter dataclasses for Task A (single cutoff) and Task B (two-stage DGP)
 - Auction data dataclasses
 - Data generators for simulation
 
@@ -14,7 +14,16 @@ from dataclasses import dataclass, field
 from typing import Tuple, List, Dict, Optional
 import numpy as np
 
-from .utils import draw_covariates, compute_mean_x
+from .utils import (
+    draw_covariates,
+    compute_mean_x,
+    MisreportingMode,
+    CutoffSpec,
+    cutoff_expected_k,
+    compute_cutoff_features,
+    informal_bid_multiplier,
+    lambda_f_first_price,
+)
 
 
 # =============================================================================
@@ -73,69 +82,107 @@ class TaskADGPParameters:
 
 @dataclass
 class TaskBDGPParameters:
-    """Data Generating Process parameters for Task B (type-specific cutoffs).
+    """Data Generating Process parameters for Task B (two-stage DGP).
 
     Attributes:
-        N: Number of auctions
-        J: Number of bidders per auction
-        mu_v: Mean valuation
-        sigma_v: Std dev of valuation shock
-        b_star_S: True cutoff for type S (intercept)
-        b_star_F: True cutoff for type F (intercept)
-        prob_type_S: Probability bidder is type S
-        beta_S: Coefficients for type S cutoff
-        beta_F: Coefficients for type F cutoff
-        sigma_b_S: Std dev of type S cutoff shocks
-        sigma_b_F: Std dev of type F cutoff shocks
-        x_mean: Mean of non-intercept covariates
-        x_std: Std dev of non-intercept covariates
+        N: Number of observed auctions (reach formal stage, S=1)
+        J: Number of bidders per auction (fixed for now; later allow sensitivity)
+        gamma: Mean valuation in v_ij = gamma + nu_ij
+        sigma_nu: Std dev of valuation shock nu_ij
+        sigma_eta: Std dev of due diligence shock eta_ij
+        kappa: Unconstrained misreporting parameter with 1 + tilde_alpha = exp(kappa)
+        beta_cutoff: Cutoff-process coefficients (intercept first). Intercept-only baseline
+            uses beta_cutoff = [c]. Later versions can include moments of informal bids.
+        sigma_omega: Std dev of cutoff shock omega_i
     """
     N: int
     J: int
-    mu_v: float
-    sigma_v: float
-    b_star_S: float
-    b_star_F: float
-    prob_type_S: float = 0.5
-    beta_S: Optional[np.ndarray] = None
-    beta_F: Optional[np.ndarray] = None
-    sigma_b_S: float = 0.0
-    sigma_b_F: float = 0.0
-    x_mean: float = 0.0
-    x_std: float = 1.0
+    gamma: float
+    sigma_nu: float
+    sigma_eta: float
+    kappa: float = 0.0
+    misreporting_mode: MisreportingMode = "scale"
+    cutoff_spec: Optional[CutoffSpec] = None
+    beta_cutoff: Optional[np.ndarray] = None
+    sigma_omega: float = 0.0
 
     def __post_init__(self):
-        if self.beta_S is None:
-            self.beta_S = np.array([self.b_star_S], dtype=float)
-        else:
-            self.beta_S = np.atleast_1d(self.beta_S).astype(float)
-        if self.beta_F is None:
-            self.beta_F = np.array([self.b_star_F], dtype=float)
-        else:
-            self.beta_F = np.atleast_1d(self.beta_F).astype(float)
+        if self.J <= 1:
+            raise ValueError("J must be >= 2 (first-price shading uses 1 - 1/J)")
+        if self.sigma_nu <= 0:
+            raise ValueError("sigma_nu must be positive")
+        if self.sigma_eta <= 0:
+            raise ValueError("sigma_eta must be positive")
 
-        if self.beta_S.ndim != 1 or self.beta_F.ndim != 1:
-            raise ValueError("beta_S and beta_F must be 1D arrays or scalars")
-        if self.beta_S.shape[0] != self.beta_F.shape[0]:
-            raise ValueError("beta_S and beta_F must have same length")
-        if self.beta_S.shape[0] == 1:
-            self.b_star_S = float(self.beta_S[0])
-            self.b_star_F = float(self.beta_F[0])
+        if self.misreporting_mode not in ("scale", "shift"):
+            raise ValueError("misreporting_mode must be 'scale' or 'shift'")
+
+        if self.beta_cutoff is None:
+            self.beta_cutoff = np.array([1.4], dtype=float)
+        else:
+            self.beta_cutoff = np.atleast_1d(self.beta_cutoff).astype(float)
+        if self.beta_cutoff.ndim != 1:
+            raise ValueError("beta_cutoff must be a 1D array or scalar")
+
+        if self.cutoff_spec is None:
+            if self.beta_cutoff.size == 1:
+                self.cutoff_spec = "intercept"
+            elif self.beta_cutoff.size == 4:
+                self.cutoff_spec = "moments_k4"
+            elif self.beta_cutoff.size == 3:
+                self.cutoff_spec = "depth_k2"
+            else:
+                raise ValueError("cutoff_spec must be provided when beta_cutoff length is not 1, 3, or 4")
+        else:
+            if self.cutoff_spec not in ("intercept", "moments_k4", "depth_k2", "depth_k2_ratio"):
+                raise ValueError("cutoff_spec must be one of: intercept, moments_k4, depth_k2, depth_k2_ratio")
+
+        expected_k = cutoff_expected_k(self.cutoff_spec)
+        if self.beta_cutoff.size != expected_k:
+            raise ValueError(
+                f"beta_cutoff length {self.beta_cutoff.size} does not match cutoff_spec "
+                f"'{self.cutoff_spec}' (expected {expected_k})"
+            )
+        if expected_k > 1 and self.J < 3:
+            raise ValueError("cutoff_spec with moments requires J >= 3")
 
     @property
     def k_covariates(self) -> int:
-        return int(self.beta_S.shape[0])
+        return int(self.beta_cutoff.shape[0])
 
-    def mean_x(self) -> np.ndarray:
-        return compute_mean_x(self.k_covariates, self.x_mean)
+    @property
+    def tilde_alpha(self) -> float:
+        """Scale misreporting term: tilde_alpha = lambda_i / lambda_f - 1."""
+        return float(self.lambda_i / self.lambda_f - 1.0)
 
-    def cutoff_at_mean_x(self) -> Tuple[float, float]:
-        x_bar = self.mean_x()
-        return float(self.beta_S @ x_bar), float(self.beta_F @ x_bar)
+    @property
+    def alpha_additive(self) -> float:
+        """Meeting-notes misreporting term alpha where lambda_i = lambda_f + alpha."""
+        return float(self.lambda_i - self.lambda_f)
+
+    @property
+    def lambda_f(self) -> float:
+        """Formal-stage shading multiplier (no misreporting)."""
+        return float(lambda_f_first_price(self.J))
+
+    @property
+    def lambda_i(self) -> float:
+        """Informal-stage multiplier lambda_I(J,kappa) under the configured misreporting_mode."""
+        return float(informal_bid_multiplier(self.J, self.kappa, mode=self.misreporting_mode))
+
+    def cutoff_at_intercept(self) -> float:
+        """Cutoff at baseline covariates (intercept-only baseline)."""
+        return float(self.beta_cutoff[0])
 
     def __repr__(self):
-        return (f"DGP(N={self.N}, J={self.J}, mu_v={self.mu_v}, "
-                f"sigma_v={self.sigma_v}, beta_S={self.beta_S}, beta_F={self.beta_F})")
+        return (
+            "DGP("
+            f"N={self.N}, J={self.J}, gamma={self.gamma}, sigma_nu={self.sigma_nu}, "
+            f"sigma_eta={self.sigma_eta}, kappa={self.kappa}, misreporting_mode={self.misreporting_mode}, "
+            f"cutoff_spec={self.cutoff_spec}, beta_cutoff={self.beta_cutoff}, "
+            f"sigma_omega={self.sigma_omega}"
+            ")"
+        )
 
 
 # =============================================================================
@@ -156,19 +203,48 @@ class MCMCConfig:
     beta_prior_mean: Optional[np.ndarray] = None
     beta_prior_std: Optional[np.ndarray] = None
 
-    # Task B priors (type-specific)
-    mu_S_prior_mean: float = 1.45
-    mu_S_prior_std: float = 0.3
-    mu_F_prior_mean: float = 1.35
-    mu_F_prior_std: float = 0.3
-    beta_S_prior_mean: Optional[np.ndarray] = None
-    beta_S_prior_std: Optional[np.ndarray] = None
-    beta_F_prior_mean: Optional[np.ndarray] = None
-    beta_F_prior_std: Optional[np.ndarray] = None
+    # Task B (two-stage) config and priors
+    task_b_stage: int = 1  # 1: fix (sigma_nu, sigma_eta), 2: estimate sigma_eta, 3: estimate sigma_nu + sigma_eta
+
+    # Task B misreporting parameterization (must match the DGP used to generate the data)
+    task_b_misreporting_mode: MisreportingMode = "scale"
+
+    # Cutoff process priors. These may be scalars or 1D arrays:
+    # - If k=1 (intercept-only), a scalar prior is used directly.
+    # - If k>1 (moments cutoff), a scalar mean is treated as the intercept prior and
+    #   remaining slopes default to 0.0 unless an explicit vector is provided.
+    task_b_cutoff_prior_mean: float = 1.4
+    task_b_cutoff_prior_std: float = 0.5
+
+    task_b_gamma_prior_mean: float = 1.3
+    task_b_gamma_prior_std: float = 0.5
+    task_b_gamma_proposal_sd: float = 0.02
+
+    # Misreporting option C: 1 + tilde_alpha = exp(kappa), kappa in R
+    task_b_kappa_prior_mean: float = 0.0
+    task_b_kappa_prior_std: float = 0.5
+    task_b_kappa_init: float = 0.0
+    task_b_kappa_proposal_sd: float = 0.1
+
+    # Cutoff shock init and priors
+    task_b_sigma_omega_init: float = 0.1
+    task_b_sigma_omega_prior_a: float = 2.0
+    task_b_sigma_omega_prior_b: float = 0.1
+
+    # Staged valuation / due diligence variance handling
+    task_b_sigma_nu_fixed: Optional[float] = None
+    task_b_sigma_eta_fixed: Optional[float] = None
+    task_b_sigma_nu_prior_a: float = 2.0
+    task_b_sigma_nu_prior_b: float = 0.1
+    task_b_sigma_eta_prior_a: float = 2.0
+    task_b_sigma_eta_prior_b: float = 0.1
 
     # Variance priors (shared)
     sigma_prior_a: float = 2.0
     sigma_prior_b: float = 0.1
+
+    # Performance
+    task_b_use_numba: bool = True
 
 
 # =============================================================================
@@ -197,28 +273,32 @@ class TaskAAuctionData:
 
 @dataclass
 class BidderData:
-    """Individual bidder data for Task B."""
-    bidder_type: str  # 'S' or 'F'
+    """Deprecated legacy type kept for backward references (unused on this branch)."""
+
+    bidder_type: str
     bid: float
     admitted: bool
 
 
 @dataclass
 class TaskBAuctionData:
-    """Auction with typed bidders (Task B: type-specific cutoffs).
+    """Auction data for Task B (two-stage DGP).
 
-    This class is data-source agnostic - it can be populated from
-    simulation (DataGenerator) or real files (RealDataLoader).
+    Observables per auction (conditional on reaching the formal stage, S=1):
+    - Informal bids for all J bidders
+    - Admission indicators, yielding bounds [L_i, U_i] for the latent cutoff b*_i
+    - Formal bids for admitted bidders only (NaN for rejected bidders)
     """
+
     auction_id: int
-    X_i: np.ndarray  # Covariates
-    bidders: List[BidderData]
-    L_S: float  # Max rejected S-bid
-    U_S: float  # Min admitted S-bid
-    L_F: float  # Max rejected F-bid
-    U_F: float  # Min admitted F-bid
-    has_S_bounds: bool  # True if L_S and U_S are both finite
-    has_F_bounds: bool  # True if L_F and U_F are both finite
+    X_i: np.ndarray  # Cutoff covariates (intercept-only baseline; later add moments)
+    informal_bids: np.ndarray  # Shape (J,)
+    admitted: np.ndarray  # Shape (J,), boolean
+    formal_bids: np.ndarray  # Shape (J,), NaN for non-admitted bidders
+    L_i: float
+    U_i: float
+    is_complete: bool  # True if both L_i and U_i are finite
+    n_bidders: int
 
 
 # =============================================================================
@@ -327,135 +407,91 @@ class TaskADataGenerator:
 
 
 class TaskBDataGenerator:
-    """Generate auction data with typed bidders for Task B."""
+    """Generate auction data for Task B (two-stage DGP)."""
 
     def __init__(self, params: TaskBDGPParameters):
         self.params = params
 
-    def _draw_covariates(self) -> np.ndarray:
-        return draw_covariates(self.params.k_covariates,
-                               self.params.x_mean, self.params.x_std)
+    def _cutoff_covariates(self, informal_bids: np.ndarray) -> np.ndarray:
+        """Construct cutoff covariates X_i from informal bids based on cutoff_spec."""
+        return compute_cutoff_features(informal_bids, self.params.cutoff_spec)
 
     def generate_auction_data(self) -> Tuple[List[TaskBAuctionData], Dict]:
-        """Generate N_observed auctions with typed bidders.
-
-        We interpret `N` as the number of auctions observed at the formal stage,
-        i.e. auctions with at least one admitted bidder overall. Auctions with
-        zero admitted overall are generated but excluded from the returned sample.
-
-        Returns:
-            Tuple of (list of observed TaskBAuctionData, summary dict)
-        """
+        """Generate N observed auctions (conditional on reaching the formal stage)."""
         auctions: List[TaskBAuctionData] = []
 
         n_initiated = 0
-        n_dropped_no_admitted = 0
+        n_dropped_all_reject = 0
 
-        # Counts among observed auctions
-        n_incomplete_S = 0
-        n_incomplete_F = 0
+        n_incomplete = 0
+        n_all_admitted = 0
+        n_two_sided = 0
 
         while len(auctions) < self.params.N:
             n_initiated += 1
-            bidders: List[BidderData] = []
+            n_bidders = int(self.params.J)
+            lambda_f = float(lambda_f_first_price(n_bidders))
+            lambda_i = float(informal_bid_multiplier(n_bidders, float(self.params.kappa), mode=self.params.misreporting_mode))
 
-            X_i = self._draw_covariates()
-            b_star_S_i = float(X_i @ self.params.beta_S + np.random.normal(0, self.params.sigma_b_S))
-            b_star_F_i = float(X_i @ self.params.beta_F + np.random.normal(0, self.params.sigma_b_F))
+            # Draw valuations and informal bids
+            v = self.params.gamma + np.random.normal(0.0, self.params.sigma_nu, size=n_bidders)
+            informal_bids = lambda_i * v
 
-            # Generate J bidders
-            for _ in range(self.params.J):
-                bidder_type = 'S' if np.random.rand() < self.params.prob_type_S else 'F'
-                epsilon = np.random.normal(0, self.params.sigma_v)
-                bid = float(self.params.mu_v + epsilon)
+            # Cutoff covariates (optionally moments of informal bids)
+            X_i = self._cutoff_covariates(informal_bids)
 
-                if bidder_type == 'S':
-                    admitted = bid >= b_star_S_i
-                else:
-                    admitted = bid >= b_star_F_i
+            # Draw cutoff and apply admission
+            b_star_i = float(X_i @ self.params.beta_cutoff + np.random.normal(0.0, self.params.sigma_omega))
+            admitted = informal_bids >= b_star_i
+            n_admitted = int(admitted.sum())
+            n_rejected = n_bidders - n_admitted
 
-                bidders.append(BidderData(bidder_type, bid, admitted))
-
-            # Selection: auction observed iff at least one admitted overall
-            if not any(b.admitted for b in bidders):
-                n_dropped_no_admitted += 1
+            # Selection: auction observed iff at least one admitted bidder
+            if n_admitted == 0:
+                n_dropped_all_reject += 1
                 continue
 
-            # Compute type-specific interval bounds
-            S_rejected = [b.bid for b in bidders if b.bidder_type == 'S' and not b.admitted]
-            S_admitted = [b.bid for b in bidders if b.bidder_type == 'S' and b.admitted]
-            F_rejected = [b.bid for b in bidders if b.bidder_type == 'F' and not b.admitted]
-            F_admitted = [b.bid for b in bidders if b.bidder_type == 'F' and b.admitted]
+            # Formal bids for admitted bidders
+            formal_bids = np.full(n_bidders, np.nan, dtype=float)
+            eta = np.random.normal(0.0, self.params.sigma_eta, size=n_admitted)
+            u_adm = v[admitted] + eta
+            formal_bids[admitted] = lambda_f * u_adm
 
-            # Type S bounds
-            if len(S_rejected) > 0 and len(S_admitted) > 0:
-                L_S = float(np.max(S_rejected))
-                U_S = float(np.min(S_admitted))
-                has_S_bounds = True
-            elif len(S_rejected) > 0:
-                L_S = float(np.max(S_rejected))
-                U_S = np.inf
-                has_S_bounds = False
-                n_incomplete_S += 1
-            elif len(S_admitted) > 0:
-                L_S = -np.inf
-                U_S = float(np.min(S_admitted))
-                has_S_bounds = False
-                n_incomplete_S += 1
+            # Bounds from observed admission indicators
+            if n_rejected == 0:
+                L_i = -np.inf
+                U_i = float(np.min(informal_bids))
+                is_complete = False
+                n_all_admitted += 1
+                n_incomplete += 1
             else:
-                # No type-S bidders in this auction
-                L_S = -np.inf
-                U_S = np.inf
-                has_S_bounds = False
+                L_i = float(np.max(informal_bids[~admitted]))
+                U_i = float(np.min(informal_bids[admitted]))
+                is_complete = True
+                n_two_sided += 1
 
-            # Type F bounds
-            if len(F_rejected) > 0 and len(F_admitted) > 0:
-                L_F = float(np.max(F_rejected))
-                U_F = float(np.min(F_admitted))
-                has_F_bounds = True
-            elif len(F_rejected) > 0:
-                L_F = float(np.max(F_rejected))
-                U_F = np.inf
-                has_F_bounds = False
-                n_incomplete_F += 1
-            elif len(F_admitted) > 0:
-                L_F = -np.inf
-                U_F = float(np.min(F_admitted))
-                has_F_bounds = False
-                n_incomplete_F += 1
-            else:
-                # No type-F bidders in this auction
-                L_F = -np.inf
-                U_F = np.inf
-                has_F_bounds = False
-
-            auction = TaskBAuctionData(
-                auction_id=len(auctions),
-                X_i=X_i,
-                bidders=bidders,
-                L_S=L_S,
-                U_S=U_S,
-                L_F=L_F,
-                U_F=U_F,
-                has_S_bounds=has_S_bounds,
-                has_F_bounds=has_F_bounds,
+            auctions.append(
+                TaskBAuctionData(
+                    auction_id=len(auctions),
+                    X_i=X_i,
+                    informal_bids=informal_bids.astype(float),
+                    admitted=admitted.astype(bool),
+                    formal_bids=formal_bids.astype(float),
+                    L_i=L_i,
+                    U_i=U_i,
+                    is_complete=is_complete,
+                    n_bidders=n_bidders,
+                )
             )
-            auctions.append(auction)
-
-        # Summary for observed auctions
-        n_complete_both = sum(1 for a in auctions if a.has_S_bounds and a.has_F_bounds)
-        n_complete_S = sum(1 for a in auctions if a.has_S_bounds)
-        n_complete_F = sum(1 for a in auctions if a.has_F_bounds)
 
         summary = {
             'n_observed': len(auctions),
-            'n_complete_both': n_complete_both,
-            'n_complete_S_only': n_complete_S,
-            'n_complete_F_only': n_complete_F,
-            'n_incomplete_S': n_incomplete_S,
-            'n_incomplete_F': n_incomplete_F,
+            'n_complete': n_two_sided,
+            'n_incomplete': n_incomplete,
+            'n_all_admitted': n_all_admitted,
+            'pct_incomplete': 100 * n_incomplete / len(auctions) if auctions else 0,
             'n_initiated': n_initiated,
-            'n_dropped_no_admitted': n_dropped_no_admitted,
+            'n_dropped_all_reject': n_dropped_all_reject,
             'keep_rate_pct': 100 * len(auctions) / n_initiated if n_initiated else 0,
         }
 

@@ -3,14 +3,14 @@ Unified sensitivity analysis framework.
 
 This module provides classes for running sensitivity analyses that
 vary sample size N and assess estimation performance for both
-Task A (single cutoff) and Task B (type-specific cutoffs).
+Task A (single cutoff) and Task B (two-stage DGP).
 """
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from .data import (
     TaskADGPParameters, TaskBDGPParameters, MCMCConfig,
@@ -288,158 +288,282 @@ class TaskASensitivityAnalysis:
 
 
 class TaskBSensitivityAnalysis:
-    """Sensitivity analysis for Task B (type-specific cutoffs)."""
+    """Sensitivity analysis for Task B (two-stage DGP)."""
 
     def __init__(self, n_replications: int = 10):
         self.n_replications = n_replications
 
-    def run_single_replication(self, dgp_params: TaskBDGPParameters,
-                               mcmc_config: MCMCConfig, rep_id: int) -> Dict:
-        """Run one replication and return metrics."""
+    @staticmethod
+    def _beta_names(k: int) -> List[str]:
+        if k == 1:
+            return ["c"]
+        if k == 3:
+            return ["c", "depth_mean_23", "depth_gap_23"]
+        if k == 4:
+            return ["c", "theta1", "theta2", "theta3"]
+        return [f"beta_{j}" for j in range(k)]
+
+    @staticmethod
+    def _summarize_samples(samples: np.ndarray, true_value: float) -> Dict[str, float]:
+        est = float(np.mean(samples))
+        ci_lower, ci_upper = np.percentile(samples, [2.5, 97.5])
+        bias = est - float(true_value)
+        rmse = float(np.sqrt(np.mean((samples - float(true_value)) ** 2)))
+        return {
+            "estimate": est,
+            "bias": bias,
+            "rmse": rmse,
+            "ci_lower": float(ci_lower),
+            "ci_upper": float(ci_upper),
+            "ci_width": float(ci_upper - ci_lower),
+            "coverage": bool(ci_lower <= true_value <= ci_upper),
+        }
+
+    def run_single_replication(
+        self,
+        dgp_params: TaskBDGPParameters,
+        mcmc_config: MCMCConfig,
+        rep_id: int,
+    ) -> Dict:
         generator = TaskBDataGenerator(dgp_params)
         auctions, stats = generator.generate_auction_data()
 
-        n_S_bounds = sum(1 for a in auctions if not (np.isinf(a.L_S) and np.isinf(a.U_S)))
-        n_F_bounds = sum(1 for a in auctions if not (np.isinf(a.L_F) and np.isinf(a.U_F)))
+        n_complete = sum(1 for a in auctions if a.is_complete)
+        pct_incomplete = 100 * (1 - n_complete / len(auctions)) if auctions else 0.0
 
-        if n_S_bounds < 2 or n_F_bounds < 2:
+        if len(auctions) < 2:
             return {
                 'N': dgp_params.N,
+                'J': dgp_params.J,
                 'rep_id': rep_id,
-                'n_S_bounds': n_S_bounds,
-                'n_F_bounds': n_F_bounds,
+                'n_observed': stats.get('n_observed', len(auctions)),
+                'n_initiated': stats.get('n_initiated', np.nan),
+                'n_dropped_all_reject': stats.get('n_dropped_all_reject', np.nan),
+                'keep_rate_pct': stats.get('keep_rate_pct', np.nan),
+                'n_complete': n_complete,
+                'pct_incomplete': pct_incomplete,
                 'converged': False,
-                'bias_S': np.nan,
-                'bias_F': np.nan,
-                'bias_gap': np.nan,
-                'rmse_S': np.nan,
-                'rmse_F': np.nan,
-                'rmse_gap': np.nan,
-                'ci_width_S': np.nan,
-                'ci_width_F': np.nan,
-                'coverage_S': False,
-                'coverage_F': False,
-                'prob_S_greater_F': np.nan,
-                'rhat_S': np.nan,
-                'rhat_F': np.nan
+                'bias_gamma': np.nan,
+                'bias_tilde_alpha': np.nan,
+                'bias_cutoff_c': np.nan,
+                'bias_theta1': np.nan,
+                'bias_theta2': np.nan,
+                'bias_theta3': np.nan,
+                'bias_depth_mean_23': np.nan,
+                'bias_depth_gap_23': np.nan,
+                'rmse_gamma': np.nan,
+                'rmse_tilde_alpha': np.nan,
+                'rmse_cutoff_c': np.nan,
+                'rmse_theta1': np.nan,
+                'rmse_theta2': np.nan,
+                'rmse_theta3': np.nan,
+                'rmse_depth_mean_23': np.nan,
+                'rmse_depth_gap_23': np.nan,
+                'ci_width_gamma': np.nan,
+                'ci_width_tilde_alpha': np.nan,
+                'ci_width_cutoff_c': np.nan,
+                'ci_width_theta1': np.nan,
+                'ci_width_theta2': np.nan,
+                'ci_width_theta3': np.nan,
+                'ci_width_depth_mean_23': np.nan,
+                'ci_width_depth_gap_23': np.nan,
+                'coverage_gamma': False,
+                'coverage_tilde_alpha': False,
+                'coverage_cutoff_c': False,
+                'coverage_theta1': False,
+                'coverage_theta2': False,
+                'coverage_theta3': False,
+                'coverage_depth_mean_23': False,
+                'coverage_depth_gap_23': False,
+                'bias_sigma_omega': np.nan,
+                'rmse_sigma_omega': np.nan,
+                'ci_width_sigma_omega': np.nan,
+                'coverage_sigma_omega': False,
+                'bias_sigma_eta': np.nan,
+                'rmse_sigma_eta': np.nan,
+                'ci_width_sigma_eta': np.nan,
+                'coverage_sigma_eta': False,
+                'bias_sigma_nu': np.nan,
+                'rmse_sigma_nu': np.nan,
+                'ci_width_sigma_nu': np.nan,
+                'coverage_sigma_nu': False,
+                'rhat_gamma': np.nan,
+                'rhat_kappa': np.nan,
+                'rhat_beta': np.nan,
             }
 
         sampler = TaskBMCMCSampler(auctions, mcmc_config)
         results = sampler.run()
 
-        mu_S = results['mu_S_samples']
-        mu_F = results['mu_F_samples']
-        gap = results['gap_samples']
+        gamma = results["gamma_samples"]
+        tilde_alpha = results["tilde_alpha_samples"]
+        beta = results["beta_samples"]
+        cutoff_c = results.get("cutoff_c_samples", beta[:, 0])
 
-        mu_S_hat = np.mean(mu_S)
-        mu_F_hat = np.mean(mu_F)
-        gap_hat = np.mean(gap)
+        sigma_omega = results.get("sigma_omega_samples")
+        sigma_eta = results.get("sigma_eta_samples")
+        sigma_nu = results.get("sigma_nu_samples")
 
-        ci_S = np.percentile(mu_S, [2.5, 97.5])
-        ci_F = np.percentile(mu_F, [2.5, 97.5])
+        true_gamma = float(dgp_params.gamma)
+        true_alpha = float(dgp_params.tilde_alpha)
+        true_beta = np.atleast_1d(dgp_params.beta_cutoff).astype(float)
+        true_sigma_omega = float(dgp_params.sigma_omega)
+        true_sigma_eta = float(dgp_params.sigma_eta)
+        true_sigma_nu = float(dgp_params.sigma_nu)
 
-        true_S, true_F = dgp_params.cutoff_at_mean_x()
-        bias_S = mu_S_hat - true_S
-        bias_F = mu_F_hat - true_F
-        true_gap = true_S - true_F
-        bias_gap = gap_hat - true_gap
+        gamma_m = self._summarize_samples(gamma, true_gamma)
+        alpha_m = self._summarize_samples(tilde_alpha, true_alpha)
+        c_m = self._summarize_samples(cutoff_c, float(true_beta[0]))
 
-        rmse_S = np.sqrt(bias_S**2 + np.var(mu_S))
-        rmse_F = np.sqrt(bias_F**2 + np.var(mu_F))
-        rmse_gap = np.sqrt(bias_gap**2 + np.var(gap))
+        k = int(beta.shape[1]) if beta.ndim == 2 else 1
+        if true_beta.size != k:
+            raise ValueError(f"True beta_cutoff has length {true_beta.size}, but sampler has k={k}")
 
-        coverage_S = (ci_S[0] <= true_S <= ci_S[1])
-        coverage_F = (ci_F[0] <= true_F <= ci_F[1])
+        beta_metrics = {name: self._summarize_samples(beta[:, j], float(true_beta[j]))
+                        for j, name in enumerate(self._beta_names(k))}
 
-        prob_S_greater_F = np.mean(gap > 0)
+        sigma_omega_m = self._summarize_samples(sigma_omega, true_sigma_omega) if sigma_omega is not None else None
+        sigma_eta_m = self._summarize_samples(sigma_eta, true_sigma_eta) if sigma_eta is not None else None
+        sigma_nu_m = self._summarize_samples(sigma_nu, true_sigma_nu) if sigma_nu is not None else None
 
-        rhat_S = results['rhat_mu_S']
-        rhat_F = results['rhat_mu_F']
+        rhat_beta = float(results['rhat_beta'])
+        rhat_gamma = float(results['rhat_gamma'])
+        rhat_kappa = float(results['rhat_kappa'])
 
         return {
             'N': dgp_params.N,
+            'J': dgp_params.J,
             'rep_id': rep_id,
-            'n_S_bounds': n_S_bounds,
-            'n_F_bounds': n_F_bounds,
-            'converged': (rhat_S < 1.1 and rhat_F < 1.1),
-            'mu_S_hat': mu_S_hat,
-            'mu_F_hat': mu_F_hat,
-            'gap_hat': gap_hat,
-            'bias_S': bias_S,
-            'bias_F': bias_F,
-            'bias_gap': bias_gap,
-            'rmse_S': rmse_S,
-            'rmse_F': rmse_F,
-            'rmse_gap': rmse_gap,
-            'ci_lower_S': ci_S[0],
-            'ci_upper_S': ci_S[1],
-            'ci_width_S': ci_S[1] - ci_S[0],
-            'ci_lower_F': ci_F[0],
-            'ci_upper_F': ci_F[1],
-            'ci_width_F': ci_F[1] - ci_F[0],
-            'coverage_S': coverage_S,
-            'coverage_F': coverage_F,
-            'prob_S_greater_F': prob_S_greater_F,
-            'rhat_S': rhat_S,
-            'rhat_F': rhat_F
+            'n_observed': stats.get('n_observed', len(auctions)),
+            'n_initiated': stats.get('n_initiated', np.nan),
+            'n_dropped_all_reject': stats.get('n_dropped_all_reject', np.nan),
+            'keep_rate_pct': stats.get('keep_rate_pct', np.nan),
+            'n_complete': n_complete,
+            'pct_incomplete': pct_incomplete,
+            'converged': (rhat_beta < 1.1 and rhat_gamma < 1.1 and rhat_kappa < 1.1),
+            'bias_gamma': gamma_m["bias"],
+            'bias_tilde_alpha': alpha_m["bias"],
+            'bias_cutoff_c': c_m["bias"],
+            'rmse_gamma': gamma_m["rmse"],
+            'rmse_tilde_alpha': alpha_m["rmse"],
+            'rmse_cutoff_c': c_m["rmse"],
+            'ci_width_gamma': gamma_m["ci_width"],
+            'ci_width_tilde_alpha': alpha_m["ci_width"],
+            'ci_width_cutoff_c': c_m["ci_width"],
+            'coverage_gamma': gamma_m["coverage"],
+            'coverage_tilde_alpha': alpha_m["coverage"],
+            'coverage_cutoff_c': c_m["coverage"],
+            'bias_theta1': beta_metrics.get("theta1", {}).get("bias", np.nan),
+            'bias_theta2': beta_metrics.get("theta2", {}).get("bias", np.nan),
+            'bias_theta3': beta_metrics.get("theta3", {}).get("bias", np.nan),
+            'bias_depth_mean_23': beta_metrics.get("depth_mean_23", {}).get("bias", np.nan),
+            'bias_depth_gap_23': beta_metrics.get("depth_gap_23", {}).get("bias", np.nan),
+            'rmse_theta1': beta_metrics.get("theta1", {}).get("rmse", np.nan),
+            'rmse_theta2': beta_metrics.get("theta2", {}).get("rmse", np.nan),
+            'rmse_theta3': beta_metrics.get("theta3", {}).get("rmse", np.nan),
+            'rmse_depth_mean_23': beta_metrics.get("depth_mean_23", {}).get("rmse", np.nan),
+            'rmse_depth_gap_23': beta_metrics.get("depth_gap_23", {}).get("rmse", np.nan),
+            'ci_width_theta1': beta_metrics.get("theta1", {}).get("ci_width", np.nan),
+            'ci_width_theta2': beta_metrics.get("theta2", {}).get("ci_width", np.nan),
+            'ci_width_theta3': beta_metrics.get("theta3", {}).get("ci_width", np.nan),
+            'ci_width_depth_mean_23': beta_metrics.get("depth_mean_23", {}).get("ci_width", np.nan),
+            'ci_width_depth_gap_23': beta_metrics.get("depth_gap_23", {}).get("ci_width", np.nan),
+            'coverage_theta1': beta_metrics.get("theta1", {}).get("coverage", False),
+            'coverage_theta2': beta_metrics.get("theta2", {}).get("coverage", False),
+            'coverage_theta3': beta_metrics.get("theta3", {}).get("coverage", False),
+            'coverage_depth_mean_23': beta_metrics.get("depth_mean_23", {}).get("coverage", False),
+            'coverage_depth_gap_23': beta_metrics.get("depth_gap_23", {}).get("coverage", False),
+            'bias_sigma_omega': (np.nan if sigma_omega_m is None else sigma_omega_m["bias"]),
+            'rmse_sigma_omega': (np.nan if sigma_omega_m is None else sigma_omega_m["rmse"]),
+            'ci_width_sigma_omega': (np.nan if sigma_omega_m is None else sigma_omega_m["ci_width"]),
+            'coverage_sigma_omega': (False if sigma_omega_m is None else sigma_omega_m["coverage"]),
+            'bias_sigma_eta': (np.nan if sigma_eta_m is None else sigma_eta_m["bias"]),
+            'rmse_sigma_eta': (np.nan if sigma_eta_m is None else sigma_eta_m["rmse"]),
+            'ci_width_sigma_eta': (np.nan if sigma_eta_m is None else sigma_eta_m["ci_width"]),
+            'coverage_sigma_eta': (False if sigma_eta_m is None else sigma_eta_m["coverage"]),
+            'bias_sigma_nu': (np.nan if sigma_nu_m is None else sigma_nu_m["bias"]),
+            'rmse_sigma_nu': (np.nan if sigma_nu_m is None else sigma_nu_m["rmse"]),
+            'ci_width_sigma_nu': (np.nan if sigma_nu_m is None else sigma_nu_m["ci_width"]),
+            'coverage_sigma_nu': (False if sigma_nu_m is None else sigma_nu_m["coverage"]),
+            'rhat_beta': rhat_beta,
+            'rhat_gamma': rhat_gamma,
+            'rhat_kappa': rhat_kappa,
         }
 
-    def sensitivity_sample_size(self, N_values: List[int] = None,
-                                J: int = 3, mu_v: float = 1.3,
-                                sigma_v: float = 0.2,
-                                b_star_S: float = 1.45,
-                                b_star_F: float = 1.35,
-                                prob_type_S: float = 0.5) -> pd.DataFrame:
-        """Run sample size sensitivity analysis.
-
-        Args:
-            N_values: List of sample sizes to test
-            J: Number of bidders per auction
-            mu_v: Mean valuation
-            sigma_v: Std dev of valuation
-            b_star_S: True cutoff for type S
-            b_star_F: True cutoff for type F
-            prob_type_S: Probability of type S
-
-        Returns:
-            DataFrame with results from all replications
-        """
+    def sensitivity_sample_size(
+        self,
+        N_values: Optional[List[int]] = None,
+        *,
+        J: int = 3,
+        gamma: float = 1.3,
+        sigma_nu: float = 0.2,
+        sigma_eta: float = 0.1,
+        kappa: float = float(np.log(1.5)),
+        misreporting_mode: str = "scale",
+        beta_cutoff: Optional[np.ndarray] = None,
+        cutoff_c: float = 1.4,
+        cutoff_spec: Optional[str] = None,
+        sigma_omega: float = 0.1,
+        stage: int = 1,
+    ) -> pd.DataFrame:
         if N_values is None:
             N_values = [20, 50, 100, 200]
 
         print("\n" + "="*70)
-        print("TASK B: SAMPLE SIZE SENSITIVITY ANALYSIS")
-        print("Type-Specific Cutoffs (S vs F)")
+        print("TASK B: TWO-STAGE SAMPLE SIZE SENSITIVITY")
         print("="*70)
         print(f"Replications per N: {self.n_replications}")
         print(f"Sample sizes: {N_values}")
+        print(f"J (bidders per auction): {J}")
+        print(f"Stage: {stage}")
+        print(f"Misreporting mode: {misreporting_mode}")
         print()
 
         mcmc_config = MCMCConfig(
-            n_iterations=10000,
-            burn_in=5000,
+            n_iterations=8000,
+            burn_in=4000,
             thinning=10,
-            n_chains=2
+            n_chains=2,
+            task_b_stage=stage,
+            task_b_misreporting_mode=misreporting_mode,
+            task_b_sigma_nu_fixed=sigma_nu,
+            task_b_sigma_eta_fixed=sigma_eta,
+            task_b_kappa_init=kappa,
+        )
+
+        beta_cutoff_arr = (
+            np.array([cutoff_c], dtype=float)
+            if beta_cutoff is None
+            else np.atleast_1d(beta_cutoff).astype(float)
         )
 
         results_list = []
-
         for N in N_values:
             print(f"\nRunning N={N} ({self.n_replications} replications)...")
 
             dgp_params = TaskBDGPParameters(
-                N=N, J=J, mu_v=mu_v, sigma_v=sigma_v,
-                b_star_S=b_star_S, b_star_F=b_star_F, prob_type_S=prob_type_S
+                N=N,
+                J=J,
+                gamma=gamma,
+                sigma_nu=sigma_nu,
+                sigma_eta=sigma_eta,
+                kappa=kappa,
+                misreporting_mode=misreporting_mode,
+                cutoff_spec=cutoff_spec,
+                beta_cutoff=beta_cutoff_arr,
+                sigma_omega=sigma_omega,
             )
 
             for rep in range(self.n_replications):
                 print(f"  Rep {rep+1}/{self.n_replications}...", end='', flush=True)
                 result = self.run_single_replication(dgp_params, mcmc_config, rep)
                 results_list.append(result)
-
                 if result['converged']:
-                    print(f" bias_S={result['bias_S']:.4f}, bias_F={result['bias_F']:.4f}, "
-                          f"Pr(S>F)={result['prob_S_greater_F']:.2f}")
+                    print(
+                        f" bias(gamma)={result['bias_gamma']:.4f}, "
+                        f"bias(alpha)={result['bias_tilde_alpha']:.4f}, "
+                        f"keep={result['keep_rate_pct']:.1f}%"
+                    )
                 else:
                     print(" NOT CONVERGED or insufficient data")
 
@@ -448,203 +572,270 @@ class TaskBSensitivityAnalysis:
         return df
 
     def _print_summary(self, df: pd.DataFrame):
-        """Print summary statistics."""
         print("\n" + "="*70)
         print("SUMMARY STATISTICS BY SAMPLE SIZE")
         print("="*70)
 
         summary = df.groupby('N').agg({
-            'n_S_bounds': 'mean',
-            'n_F_bounds': 'mean',
-            'bias_S': ['mean', 'std'],
-            'bias_F': ['mean', 'std'],
-            'bias_gap': ['mean', 'std'],
-            'rmse_S': ['mean', 'std'],
-            'rmse_F': ['mean', 'std'],
-            'ci_width_S': ['mean', 'std'],
-            'ci_width_F': ['mean', 'std'],
-            'coverage_S': 'mean',
-            'coverage_F': 'mean',
-            'prob_S_greater_F': 'mean',
+            'keep_rate_pct': ['mean', 'std'],
+            'pct_incomplete': ['mean', 'std'],
+            'bias_gamma': ['mean', 'std'],
+            'bias_tilde_alpha': ['mean', 'std'],
+            'bias_cutoff_c': ['mean', 'std'],
+            'bias_theta1': ['mean', 'std'],
+            'bias_theta2': ['mean', 'std'],
+            'bias_theta3': ['mean', 'std'],
+            'bias_depth_mean_23': ['mean', 'std'],
+            'bias_depth_gap_23': ['mean', 'std'],
+            'bias_sigma_omega': ['mean', 'std'],
+            'bias_sigma_eta': ['mean', 'std'],
+            'bias_sigma_nu': ['mean', 'std'],
+            'rmse_gamma': ['mean', 'std'],
+            'rmse_tilde_alpha': ['mean', 'std'],
+            'rmse_cutoff_c': ['mean', 'std'],
+            'rmse_theta1': ['mean', 'std'],
+            'rmse_theta2': ['mean', 'std'],
+            'rmse_theta3': ['mean', 'std'],
+            'rmse_depth_mean_23': ['mean', 'std'],
+            'rmse_depth_gap_23': ['mean', 'std'],
+            'rmse_sigma_omega': ['mean', 'std'],
+            'rmse_sigma_eta': ['mean', 'std'],
+            'rmse_sigma_nu': ['mean', 'std'],
+            'ci_width_gamma': ['mean', 'std'],
+            'ci_width_tilde_alpha': ['mean', 'std'],
+            'ci_width_cutoff_c': ['mean', 'std'],
+            'ci_width_theta1': ['mean', 'std'],
+            'ci_width_theta2': ['mean', 'std'],
+            'ci_width_theta3': ['mean', 'std'],
+            'ci_width_depth_mean_23': ['mean', 'std'],
+            'ci_width_depth_gap_23': ['mean', 'std'],
+            'ci_width_sigma_omega': ['mean', 'std'],
+            'ci_width_sigma_eta': ['mean', 'std'],
+            'ci_width_sigma_nu': ['mean', 'std'],
+            'coverage_gamma': 'mean',
+            'coverage_tilde_alpha': 'mean',
+            'coverage_cutoff_c': 'mean',
+            'coverage_theta1': 'mean',
+            'coverage_theta2': 'mean',
+            'coverage_theta3': 'mean',
+            'coverage_depth_mean_23': 'mean',
+            'coverage_depth_gap_23': 'mean',
+            'coverage_sigma_omega': 'mean',
+            'coverage_sigma_eta': 'mean',
+            'coverage_sigma_nu': 'mean',
             'converged': 'mean',
-            'rhat_S': 'mean',
-            'rhat_F': 'mean'
+            'rhat_gamma': 'mean',
+            'rhat_kappa': 'mean',
         }).round(4)
 
         print(summary)
 
     def plot_results(self, df: pd.DataFrame, save_path: str):
-        """Create comprehensive sensitivity plots for Task B."""
-        fig, axes = plt.subplots(3, 3, figsize=(15, 12))
-        fig.suptitle('Task B: Sample Size Sensitivity Analysis (Type-Specific Cutoffs)',
-                    fontsize=14, fontweight='bold', y=0.98)
+        fig, axes = plt.subplots(2, 3, figsize=(14, 8))
+        fig.suptitle('Task B: Two-Stage Sample Size Sensitivity', fontsize=14, fontweight='bold', y=0.98)
 
         summary = df.groupby('N').agg({
-            'bias_S': ['mean', 'std'],
-            'bias_F': ['mean', 'std'],
-            'bias_gap': ['mean', 'std'],
-            'rmse_S': ['mean', 'std'],
-            'rmse_F': ['mean', 'std'],
-            'ci_width_S': ['mean', 'std'],
-            'ci_width_F': ['mean', 'std'],
-            'coverage_S': 'mean',
-            'coverage_F': 'mean',
-            'prob_S_greater_F': 'mean',
-            'n_S_bounds': 'mean',
-            'n_F_bounds': 'mean'
+            'bias_gamma': ['mean', 'std'],
+            'bias_tilde_alpha': ['mean', 'std'],
+            'bias_cutoff_c': ['mean', 'std'],
+            'rmse_gamma': ['mean', 'std'],
+            'rmse_tilde_alpha': ['mean', 'std'],
+            'rmse_cutoff_c': ['mean', 'std'],
         }).reset_index()
 
         N_values = summary['N'].values
 
-        # Panel 1: Bias for Type S
-        ax = axes[0, 0]
-        bias_S_mean = summary['bias_S']['mean'].values
-        bias_S_std = summary['bias_S']['std'].values
-        ax.errorbar(N_values, bias_S_mean, yerr=bias_S_std, marker='o',
-                   markersize=8, linewidth=2, capsize=5, color='steelblue',
-                   label='Type S bias +/- SD')
-        ax.axhline(0, color='red', linestyle='--', linewidth=1, label='Unbiased')
-        ax.set_xlabel('Sample Size (N)')
-        ax.set_ylabel('Bias (Type S)')
-        ax.set_title('(A) Bias: Type S Cutoff')
-        ax.set_xscale('log')
-        ax.grid(True, alpha=0.3)
-        ax.legend(frameon=True, framealpha=0.9)
+        # Bias panels
+        for ax, key, title in [
+            (axes[0, 0], 'bias_gamma', 'Bias: gamma'),
+            (axes[0, 1], 'bias_tilde_alpha', 'Bias: tilde_alpha'),
+            (axes[0, 2], 'bias_cutoff_c', 'Bias: cutoff c'),
+        ]:
+            mean = summary[key]['mean'].values
+            std = summary[key]['std'].values
+            ax.errorbar(N_values, mean, yerr=std, marker='o', linewidth=2, capsize=4)
+            ax.axhline(0, color='red', linestyle='--', linewidth=1)
+            ax.set_xscale('log')
+            ax.set_title(title)
+            ax.grid(True, alpha=0.3)
+            ax.set_xlabel('N')
 
-        # Panel 2: Bias for Type F
-        ax = axes[0, 1]
-        bias_F_mean = summary['bias_F']['mean'].values
-        bias_F_std = summary['bias_F']['std'].values
-        ax.errorbar(N_values, bias_F_mean, yerr=bias_F_std, marker='s',
-                   markersize=8, linewidth=2, capsize=5, color='coral',
-                   label='Type F bias +/- SD')
-        ax.axhline(0, color='red', linestyle='--', linewidth=1, label='Unbiased')
-        ax.set_xlabel('Sample Size (N)')
-        ax.set_ylabel('Bias (Type F)')
-        ax.set_title('(B) Bias: Type F Cutoff')
-        ax.set_xscale('log')
-        ax.grid(True, alpha=0.3)
-        ax.legend(frameon=True, framealpha=0.9)
-
-        # Panel 3: Bias for Gap
-        ax = axes[0, 2]
-        bias_gap_mean = summary['bias_gap']['mean'].values
-        bias_gap_std = summary['bias_gap']['std'].values
-        ax.errorbar(N_values, bias_gap_mean, yerr=bias_gap_std, marker='^',
-                   markersize=8, linewidth=2, capsize=5, color='purple',
-                   label='Gap bias +/- SD')
-        ax.axhline(0, color='red', linestyle='--', linewidth=1, label='Unbiased')
-        ax.set_xlabel('Sample Size (N)')
-        ax.set_ylabel('Bias (Gap = S - F)')
-        ax.set_title('(C) Bias: Cutoff Gap')
-        ax.set_xscale('log')
-        ax.grid(True, alpha=0.3)
-        ax.legend(frameon=True, framealpha=0.9)
-
-        # Panel 4: RMSE comparison
-        ax = axes[1, 0]
-        rmse_S_mean = summary['rmse_S']['mean'].values
-        rmse_F_mean = summary['rmse_F']['mean'].values
-        ax.plot(N_values, rmse_S_mean, marker='o', markersize=8, linewidth=2,
-               color='steelblue', label='Type S')
-        ax.plot(N_values, rmse_F_mean, marker='s', markersize=8, linewidth=2,
-               color='coral', label='Type F')
-        ax.set_xlabel('Sample Size (N)')
-        ax.set_ylabel('RMSE')
-        ax.set_title('(D) RMSE Comparison')
-        ax.set_xscale('log')
-        ax.set_yscale('log')
-        ax.grid(True, alpha=0.3)
-        ax.legend(frameon=True, framealpha=0.9)
-
-        # Panel 5: CI Width comparison
-        ax = axes[1, 1]
-        ci_S_mean = summary['ci_width_S']['mean'].values
-        ci_F_mean = summary['ci_width_F']['mean'].values
-        ax.plot(N_values, ci_S_mean, marker='o', markersize=8, linewidth=2,
-               color='steelblue', label='Type S')
-        ax.plot(N_values, ci_F_mean, marker='s', markersize=8, linewidth=2,
-               color='coral', label='Type F')
-        ax.set_xlabel('Sample Size (N)')
-        ax.set_ylabel('95% CI Width')
-        ax.set_title('(E) Credible Interval Width')
-        ax.set_xscale('log')
-        ax.set_yscale('log')
-        ax.grid(True, alpha=0.3)
-        ax.legend(frameon=True, framealpha=0.9)
-
-        # Panel 6: Coverage rates
-        ax = axes[1, 2]
-        coverage_S = summary['coverage_S']['mean'].values * 100
-        coverage_F = summary['coverage_F']['mean'].values * 100
-        ax.plot(N_values, coverage_S, marker='o', markersize=8, linewidth=2,
-               color='steelblue', label='Type S')
-        ax.plot(N_values, coverage_F, marker='s', markersize=8, linewidth=2,
-               color='coral', label='Type F')
-        ax.axhline(95, color='red', linestyle='--', linewidth=1, label='Nominal 95%')
-        ax.set_xlabel('Sample Size (N)')
-        ax.set_ylabel('Coverage Rate (%)')
-        ax.set_title('(F) Coverage Rate')
-        ax.set_xscale('log')
-        ax.set_ylim([0, 105])
-        ax.grid(True, alpha=0.3)
-        ax.legend(frameon=True, framealpha=0.9)
-
-        # Panel 7: Probability S > F
-        ax = axes[2, 0]
-        prob_S_greater = summary['prob_S_greater_F']['mean'].values * 100
-        ax.plot(N_values, prob_S_greater, marker='D', markersize=8, linewidth=2,
-               color='purple', label='Pr(mu_S > mu_F)')
-        ax.axhline(100, color='red', linestyle='--', linewidth=1, alpha=0.5,
-                  label='Perfect separation')
-        ax.set_xlabel('Sample Size (N)')
-        ax.set_ylabel('Probability (%)')
-        ax.set_title('(G) Type Separation: Pr(mu_S > mu_F)')
-        ax.set_xscale('log')
-        ax.set_ylim([0, 105])
-        ax.grid(True, alpha=0.3)
-        ax.legend(frameon=True, framealpha=0.9)
-
-        # Panel 8: Data availability
-        ax = axes[2, 1]
-        n_S = summary['n_S_bounds']['mean'].values
-        n_F = summary['n_F_bounds']['mean'].values
-        ax.plot(N_values, n_S, marker='o', markersize=8, linewidth=2,
-               color='steelblue', label='# Auctions w/ S info')
-        ax.plot(N_values, n_F, marker='s', markersize=8, linewidth=2,
-               color='coral', label='# Auctions w/ F info')
-        ax.set_xlabel('Sample Size (N)')
-        ax.set_ylabel('# Auctions with Information')
-        ax.set_title('(H) Data Availability by Type')
-        ax.set_xscale('log')
-        ax.set_yscale('log')
-        ax.grid(True, alpha=0.3)
-        ax.legend(frameon=True, framealpha=0.9)
-
-        # Panel 9: Summary text
-        ax = axes[2, 2]
-        ax.axis('off')
-
-        n20 = df[df['N'] == 20]
-        if len(n20) > 0:
-            summary_text = "N=20 Summary Statistics:\n\n"
-            summary_text += f"Type S:\n"
-            summary_text += f"  Mean bias: {n20['bias_S'].mean():.4f}\n"
-            summary_text += f"  Mean RMSE: {n20['rmse_S'].mean():.4f}\n"
-            summary_text += f"  Coverage: {n20['coverage_S'].mean()*100:.1f}%\n\n"
-            summary_text += f"Type F:\n"
-            summary_text += f"  Mean bias: {n20['bias_F'].mean():.4f}\n"
-            summary_text += f"  Mean RMSE: {n20['rmse_F'].mean():.4f}\n"
-            summary_text += f"  Coverage: {n20['coverage_F'].mean()*100:.1f}%\n\n"
-            summary_text += f"Gap:\n"
-            summary_text += f"  Mean bias: {n20['bias_gap'].mean():.4f}\n"
-            summary_text += f"  Pr(S>F): {n20['prob_S_greater_F'].mean()*100:.1f}%\n"
-
-            ax.text(0.1, 0.5, summary_text, fontsize=10, verticalalignment='center',
-                   fontfamily='monospace',
-                   bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.3))
+        # RMSE panels
+        for ax, key, title in [
+            (axes[1, 0], 'rmse_gamma', 'RMSE: gamma'),
+            (axes[1, 1], 'rmse_tilde_alpha', 'RMSE: tilde_alpha'),
+            (axes[1, 2], 'rmse_cutoff_c', 'RMSE: cutoff c'),
+        ]:
+            mean = summary[key]['mean'].values
+            ax.plot(N_values, mean, marker='o', linewidth=2)
+            ax.set_xscale('log')
+            ax.set_yscale('log')
+            ax.set_title(title)
+            ax.grid(True, alpha=0.3)
+            ax.set_xlabel('N')
 
         fig.tight_layout(rect=[0.02, 0.02, 0.98, 0.94])
         plt.savefig(save_path, dpi=300)
         print(f"\nSensitivity plots saved to {save_path}")
         plt.close()
+
+        # Optional: cutoff moments coefficients (theta1-3), if present.
+        has_theta = (
+            df[["bias_theta1", "bias_theta2", "bias_theta3"]]
+            .notna()
+            .to_numpy()
+            .any()
+        )
+        if has_theta:
+            betas_path = save_path.replace(".png", "_cutoff_betas.png")
+            fig, axes = plt.subplots(2, 3, figsize=(14, 7))
+            fig.suptitle('Task B: Cutoff Moments Coefficients (theta) Sensitivity', fontsize=14, fontweight='bold', y=0.98)
+
+            summary = df.groupby("N").agg({
+                "bias_theta1": ["mean", "std"],
+                "bias_theta2": ["mean", "std"],
+                "bias_theta3": ["mean", "std"],
+                "rmse_theta1": ["mean", "std"],
+                "rmse_theta2": ["mean", "std"],
+                "rmse_theta3": ["mean", "std"],
+            }).reset_index()
+
+            N_values = summary["N"].values
+
+            for ax, key, title in [
+                (axes[0, 0], "bias_theta1", "Bias: theta1 (top-1)"),
+                (axes[0, 1], "bias_theta2", "Bias: theta2 (top-2 avg)"),
+                (axes[0, 2], "bias_theta3", "Bias: theta3 (top-3 avg)"),
+            ]:
+                mean = summary[key]["mean"].values
+                std = summary[key]["std"].values
+                ax.errorbar(N_values, mean, yerr=std, marker="o", linewidth=2, capsize=4)
+                ax.axhline(0, color="red", linestyle="--", linewidth=1)
+                ax.set_xscale("log")
+                ax.set_title(title)
+                ax.grid(True, alpha=0.3)
+                ax.set_xlabel("N")
+
+            for ax, key, title in [
+                (axes[1, 0], "rmse_theta1", "RMSE: theta1"),
+                (axes[1, 1], "rmse_theta2", "RMSE: theta2"),
+                (axes[1, 2], "rmse_theta3", "RMSE: theta3"),
+            ]:
+                mean = summary[key]["mean"].values
+                ax.plot(N_values, mean, marker="o", linewidth=2)
+                ax.set_xscale("log")
+                ax.set_yscale("log")
+                ax.set_title(title)
+                ax.grid(True, alpha=0.3)
+                ax.set_xlabel("N")
+
+            fig.tight_layout(rect=[0.02, 0.02, 0.98, 0.94])
+            plt.savefig(betas_path, dpi=300)
+            print(f"Sensitivity plots saved to {betas_path}")
+            plt.close()
+
+        has_depth = (
+            df[["bias_depth_mean_23", "bias_depth_gap_23"]]
+            .notna()
+            .to_numpy()
+            .any()
+        )
+        if has_depth:
+            depth_path = save_path.replace(".png", "_cutoff_depth.png")
+            fig, axes = plt.subplots(2, 2, figsize=(12, 7))
+            fig.suptitle('Task B: Depth Cutoff Coefficients Sensitivity', fontsize=14, fontweight='bold', y=0.98)
+
+            summary = df.groupby("N").agg({
+                "bias_depth_mean_23": ["mean", "std"],
+                "bias_depth_gap_23": ["mean", "std"],
+                "rmse_depth_mean_23": ["mean", "std"],
+                "rmse_depth_gap_23": ["mean", "std"],
+            }).reset_index()
+
+            N_values = summary["N"].values
+
+            for ax, key, title in [
+                (axes[0, 0], "bias_depth_mean_23", "Bias: depth mean (b2+b3)/2"),
+                (axes[0, 1], "bias_depth_gap_23", "Bias: depth gap (b2-b3)"),
+            ]:
+                mean = summary[key]["mean"].values
+                std = summary[key]["std"].values
+                ax.errorbar(N_values, mean, yerr=std, marker="o", linewidth=2, capsize=4)
+                ax.axhline(0, color="red", linestyle="--", linewidth=1)
+                ax.set_xscale("log")
+                ax.set_title(title)
+                ax.grid(True, alpha=0.3)
+                ax.set_xlabel("N")
+
+            for ax, key, title in [
+                (axes[1, 0], "rmse_depth_mean_23", "RMSE: depth mean"),
+                (axes[1, 1], "rmse_depth_gap_23", "RMSE: depth gap"),
+            ]:
+                mean = summary[key]["mean"].values
+                ax.plot(N_values, mean, marker="o", linewidth=2)
+                ax.set_xscale("log")
+                ax.set_yscale("log")
+                ax.set_title(title)
+                ax.grid(True, alpha=0.3)
+                ax.set_xlabel("N")
+
+            fig.tight_layout(rect=[0.02, 0.02, 0.98, 0.94])
+            plt.savefig(depth_path, dpi=300)
+            print(f"Sensitivity plots saved to {depth_path}")
+            plt.close()
+
+        # Optional: sigma panels for stages that estimate variances.
+        has_sigma = (
+            df[["ci_width_sigma_eta", "ci_width_sigma_nu"]]
+            .fillna(0.0)
+            .to_numpy()
+            .max()
+            > 1e-9
+        )
+        if has_sigma:
+            sigmas_path = save_path.replace(".png", "_sigmas.png")
+            fig, axes = plt.subplots(2, 3, figsize=(14, 7))
+            fig.suptitle('Task B: Variance Parameters Sensitivity', fontsize=14, fontweight='bold', y=0.98)
+
+            summary = df.groupby("N").agg({
+                "bias_sigma_omega": ["mean", "std"],
+                "bias_sigma_eta": ["mean", "std"],
+                "bias_sigma_nu": ["mean", "std"],
+                "rmse_sigma_omega": ["mean", "std"],
+                "rmse_sigma_eta": ["mean", "std"],
+                "rmse_sigma_nu": ["mean", "std"],
+            }).reset_index()
+
+            N_values = summary["N"].values
+
+            for ax, key, title in [
+                (axes[0, 0], "bias_sigma_omega", "Bias: sigma_omega"),
+                (axes[0, 1], "bias_sigma_eta", "Bias: sigma_eta"),
+                (axes[0, 2], "bias_sigma_nu", "Bias: sigma_nu"),
+            ]:
+                mean = summary[key]["mean"].values
+                std = summary[key]["std"].values
+                ax.errorbar(N_values, mean, yerr=std, marker="o", linewidth=2, capsize=4)
+                ax.axhline(0, color="red", linestyle="--", linewidth=1)
+                ax.set_xscale("log")
+                ax.set_title(title)
+                ax.grid(True, alpha=0.3)
+                ax.set_xlabel("N")
+
+            for ax, key, title in [
+                (axes[1, 0], "rmse_sigma_omega", "RMSE: sigma_omega"),
+                (axes[1, 1], "rmse_sigma_eta", "RMSE: sigma_eta"),
+                (axes[1, 2], "rmse_sigma_nu", "RMSE: sigma_nu"),
+            ]:
+                mean = summary[key]["mean"].values
+                ax.plot(N_values, mean, marker="o", linewidth=2)
+                ax.set_xscale("log")
+                ax.set_yscale("log")
+                ax.set_title(title)
+                ax.grid(True, alpha=0.3)
+                ax.set_xlabel("N")
+
+            fig.tight_layout(rect=[0.02, 0.02, 0.98, 0.94])
+            plt.savefig(sigmas_path, dpi=300)
+            print(f"Sensitivity plots saved to {sigmas_path}")
+            plt.close()

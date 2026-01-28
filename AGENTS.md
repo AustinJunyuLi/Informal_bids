@@ -27,4 +27,5 @@ Use `README.md` for the full setup, CLI entry points, and OS-specific steps. Kee
 
 ## Operational notes
 - `pyproject.toml` defines CLI scripts and dependencies.
+- Reports should reference plots from `outputs/` (centralized). Do not create per-report figure folders (`reports/**/figures` is ignored).
 - If JIT compilation is an issue during debugging, set `NUMBA_DISABLE_JIT=1`.

@@ -23,7 +23,6 @@ from .data import (
     MCMCConfig,
     TaskAAuctionData,
     TaskBAuctionData,
-    BidderData,
     TaskADataGenerator,
     TaskBDataGenerator,
 )
@@ -49,7 +48,6 @@ __all__ = [
     "MCMCConfig",
     "TaskAAuctionData",
     "TaskBAuctionData",
-    "BidderData",
     # Generators
     "TaskADataGenerator",
     "TaskBDataGenerator",

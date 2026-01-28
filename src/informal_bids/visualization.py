@@ -3,7 +3,7 @@ Publication-quality plotting for MCMC results.
 
 This module contains visualization classes for:
 - Task A: Single cutoff diagnostics and interval plots
-- Task B: Type-specific cutoff diagnostics and interval plots
+- Task B: Two-stage diagnostics (gamma, tilde_alpha, cutoff)
 """
 
 import numpy as np
@@ -141,200 +141,165 @@ class TaskAVisualizer:
 
 
 class TaskBVisualizer:
-    """Create publication-quality plots for Task B (type-specific cutoffs)."""
+    """Create plots for Task B (two-stage DGP)."""
 
     @staticmethod
-    def plot_diagnostics(results: Dict, true_b_star_S: float, true_b_star_F: float,
-                        save_path: str):
-        """Comprehensive diagnostic plots for type-specific cutoffs.
+    def plot_diagnostics(
+        results: Dict,
+        *,
+        true_gamma: float,
+        true_tilde_alpha: float,
+        true_beta_cutoff: Optional[np.ndarray] = None,
+        true_cutoff_c: Optional[float] = None,
+        true_sigma_omega: Optional[float] = None,
+        true_sigma_nu: Optional[float] = None,
+        true_sigma_eta: Optional[float] = None,
+        save_path: str,
+    ):
+        def beta_names(k: int) -> List[str]:
+            if k == 1:
+                return ["c"]
+            if k == 3:
+                return ["c", "depth_mean_23", "depth_gap_23"]
+            if k == 4:
+                return ["c", "theta1", "theta2", "theta3"]
+            return [f"beta_{j}" for j in range(k)]
 
-        Args:
-            results: Output from TaskBMCMCSampler.run()
-            true_b_star_S: True cutoff for type S
-            true_b_star_F: True cutoff for type F
-            save_path: Path to save the figure
-        """
-        fig = plt.figure(figsize=(16, 7))
-        gs = fig.add_gridspec(2, 4, hspace=0.35, wspace=0.35)
+        gamma = results["gamma_samples"]
+        tilde_alpha = results["tilde_alpha_samples"]
 
-        mu_S = results['mu_S_samples']
-        mu_F = results['mu_F_samples']
-        gap = results['gap_samples']
-        all_chains = results['all_chains']
+        beta_samples = results.get("beta_samples")
+        if beta_samples is None or beta_samples.size == 0:
+            raise ValueError("Task B diagnostics require beta_samples")
+        k = int(beta_samples.shape[1]) if beta_samples.ndim == 2 else 1
 
-        # Color scheme
-        color_S = 'steelblue'
-        color_F = 'coral'
-        color_gap = 'purple'
+        if true_beta_cutoff is None:
+            if true_cutoff_c is None:
+                true_beta = None
+            else:
+                true_beta = np.full(k, np.nan, dtype=float)
+                true_beta[0] = float(true_cutoff_c)
+        else:
+            true_beta = np.atleast_1d(true_beta_cutoff).astype(float)
+            if true_beta.size != k:
+                raise ValueError(f"true_beta_cutoff has length {true_beta.size}, expected k={k}")
 
-        # Row 1: Trace plots
-        ax = fig.add_subplot(gs[0, :2])
-        for i, chain in enumerate(all_chains):
-            alpha = 0.7 if i == 0 else 0.3
-            ax.plot(chain['mu_S'], alpha=alpha, linewidth=0.8, color=color_S,
-                   label=f'mu_S Chain {i+1}' if i == 0 else '')
-            ax.plot(chain['mu_F'], alpha=alpha, linewidth=0.8, color=color_F,
-                   label=f'mu_F Chain {i+1}' if i == 0 else '')
-        ax.axhline(true_b_star_S, color='darkblue', linestyle='--', linewidth=1.5,
-                  label=f'True b*_S = {true_b_star_S}')
-        ax.axhline(true_b_star_F, color='darkred', linestyle='--', linewidth=1.5,
-                  label=f'True b*_F = {true_b_star_F}')
-        ax.set_xlabel('Iteration')
-        ax.set_ylabel('Cutoff Value')
-        ax.set_title('(A) Trace Plots: mu_S and mu_F')
-        ax.legend(loc='best', frameon=True, framealpha=0.9, fontsize=9)
-        ax.grid(True, alpha=0.3)
+        params: List[Tuple[str, np.ndarray, Optional[float]]] = [
+            ("gamma", gamma, float(true_gamma)),
+            ("tilde_alpha", tilde_alpha, float(true_tilde_alpha)),
+        ]
 
-        # Row 1: Gap trace plot
-        ax = fig.add_subplot(gs[0, 2:])
-        for i, chain in enumerate(all_chains):
-            gap_chain = chain['mu_S'] - chain['mu_F']
-            alpha = 0.7 if i == 0 else 0.3
-            ax.plot(gap_chain, alpha=alpha, linewidth=0.8, color=color_gap,
-                   label=f'Delta Chain {i+1}' if i == 0 else '')
-        ax.axhline(true_b_star_S - true_b_star_F, color='purple', linestyle='--',
-                  linewidth=1.5, label=f'True Delta = {true_b_star_S - true_b_star_F:.3f}')
-        ax.axhline(0, color='black', linestyle='-', linewidth=0.5, alpha=0.3)
-        ax.set_xlabel('Iteration')
-        ax.set_ylabel('Gap (mu_S - mu_F)')
-        ax.set_title('(B) Trace Plot: Gap Delta')
-        ax.legend(loc='best', frameon=True, framealpha=0.9)
-        ax.grid(True, alpha=0.3)
+        for j, name in enumerate(beta_names(k)):
+            tv = None if true_beta is None else float(true_beta[j])
+            params.append((f"beta_cutoff:{name}", beta_samples[:, j], tv))
 
-        # Row 2: Posterior distributions
-        ax = fig.add_subplot(gs[1, 0])
-        ax.hist(mu_S, bins=40, density=True, alpha=0.7, color=color_S,
-               edgecolor='black', linewidth=0.5)
-        ax.axvline(true_b_star_S, color='darkblue', linestyle='--', linewidth=1.5,
-                  label='True b*_S')
-        ax.axvline(np.mean(mu_S), color='navy', linestyle='-', linewidth=1.5,
-                  label='Posterior mean')
-        ax.set_xlabel('mu_S')
-        ax.set_ylabel('Density')
-        ax.set_title('(C) Posterior: mu_S')
-        ax.legend(frameon=True, framealpha=0.9)
-        ax.grid(True, alpha=0.3, axis='y')
+        sigma_omega = results.get("sigma_omega_samples")
+        if sigma_omega is not None and sigma_omega.size:
+            params.append(("sigma_omega", sigma_omega, None if true_sigma_omega is None else float(true_sigma_omega)))
 
-        ax = fig.add_subplot(gs[1, 1])
-        ax.hist(mu_F, bins=40, density=True, alpha=0.7, color=color_F,
-               edgecolor='black', linewidth=0.5)
-        ax.axvline(true_b_star_F, color='darkred', linestyle='--', linewidth=1.5,
-                  label='True b*_F')
-        ax.axvline(np.mean(mu_F), color='firebrick', linestyle='-', linewidth=1.5,
-                  label='Posterior mean')
-        ax.set_xlabel('mu_F')
-        ax.set_ylabel('Density')
-        ax.set_title('(D) Posterior: mu_F')
-        ax.legend(frameon=True, framealpha=0.9)
-        ax.grid(True, alpha=0.3, axis='y')
+        sigma_eta = results.get("sigma_eta_samples")
+        if sigma_eta is not None and sigma_eta.size and np.std(sigma_eta) > 1e-12:
+            params.append(("sigma_eta", sigma_eta, None if true_sigma_eta is None else float(true_sigma_eta)))
 
-        ax = fig.add_subplot(gs[1, 2])
-        ax.hist(gap, bins=40, density=True, alpha=0.7, color=color_gap,
-               edgecolor='black', linewidth=0.5)
-        ax.axvline(true_b_star_S - true_b_star_F, color='purple', linestyle='--',
-                  linewidth=1.5, label='True Delta')
-        ax.axvline(np.mean(gap), color='indigo', linestyle='-', linewidth=1.5,
-                  label='Posterior mean')
-        ax.axvline(0, color='black', linestyle='-', linewidth=0.5, alpha=0.5)
-        ax.set_xlabel('Gap Delta = mu_S - mu_F')
-        ax.set_ylabel('Density')
-        ax.set_title('(E) Posterior: Gap Delta')
-        prob_positive = np.mean(gap > 0)
-        ax.text(0.05, 0.95, f'Pr(Delta > 0) = {prob_positive:.3f}',
-               transform=ax.transAxes, verticalalignment='top',
-               bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
-        ax.legend(frameon=True, framealpha=0.9)
-        ax.grid(True, alpha=0.3, axis='y')
+        sigma_nu = results.get("sigma_nu_samples")
+        if sigma_nu is not None and sigma_nu.size and np.std(sigma_nu) > 1e-12:
+            params.append(("sigma_nu", sigma_nu, None if true_sigma_nu is None else float(true_sigma_nu)))
 
-        # Row 2: Credible intervals comparison
-        ax = fig.add_subplot(gs[1, 3])
-        ci_S = np.percentile(mu_S, [2.5, 97.5])
-        ci_F = np.percentile(mu_F, [2.5, 97.5])
+        n_params = len(params)
+        n_cols = min(3, n_params)
+        n_rows = int(np.ceil(n_params / float(n_cols)))
 
-        # Plot CIs
-        ax.barh([1], [ci_S[1] - ci_S[0]], left=[ci_S[0]], height=0.4,
-               color=color_S, alpha=0.6, label='Type S: 95% CI')
-        ax.barh([0], [ci_F[1] - ci_F[0]], left=[ci_F[0]], height=0.4,
-               color=color_F, alpha=0.6, label='Type F: 95% CI')
+        fig, axes = plt.subplots(
+            nrows=2 * n_rows,
+            ncols=n_cols,
+            figsize=(5.0 * n_cols, 2.8 * 2 * n_rows),
+        )
+        axes = np.atleast_2d(axes)
 
-        # Plot point estimates
-        ax.scatter([np.mean(mu_S)], [1], color='navy', s=100, marker='o',
-                  zorder=10, label='Posterior mean')
-        ax.scatter([np.mean(mu_F)], [0], color='firebrick', s=100, marker='o',
-                  zorder=10)
+        # Hide all axes first; enable as we fill.
+        for ax in axes.flat:
+            ax.set_visible(False)
 
-        # Plot true values
-        ax.scatter([true_b_star_S], [1], color='darkblue', s=100, marker='x',
-                  linewidths=3, zorder=10, label='True value')
-        ax.scatter([true_b_star_F], [0], color='darkred', s=100, marker='x',
-                  linewidths=3, zorder=10)
+        for idx, (label, samples, true_value) in enumerate(params):
+            r = idx // n_cols
+            c = idx % n_cols
+            ax_trace = axes[2 * r, c]
+            ax_post = axes[2 * r + 1, c]
+            ax_trace.set_visible(True)
+            ax_post.set_visible(True)
 
-        ax.set_yticks([0, 1])
-        ax.set_yticklabels(['Type F', 'Type S'])
-        ax.set_xlabel('Cutoff Value')
-        ax.set_title('(F) Estimation Summary: 95% CIs')
-        ax.legend(loc='best', frameon=True, framealpha=0.9)
-        ax.grid(True, alpha=0.3, axis='x')
+            letter = chr(ord("A") + idx)
 
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            # Trace
+            ax_trace.plot(samples, linewidth=0.8, alpha=0.8, color="steelblue")
+            if true_value is not None and np.isfinite(true_value):
+                ax_trace.axhline(true_value, color="red", linestyle="--", linewidth=1.3, label="True")
+                ax_trace.legend(frameon=True, framealpha=0.9)
+            ax_trace.set_title(f"({letter}) Trace: {label}")
+            ax_trace.set_xlabel("Iteration (post burn-in)")
+            ax_trace.grid(True, alpha=0.3)
+
+            # Posterior
+            ax_post.hist(samples, bins=40, density=True, alpha=0.7, color="slategray", edgecolor="black", linewidth=0.5)
+            if true_value is not None and np.isfinite(true_value):
+                ax_post.axvline(true_value, color="red", linestyle="--", linewidth=1.3, label="True")
+            ax_post.axvline(float(np.mean(samples)), color="navy", linestyle="-", linewidth=1.3, label="Mean")
+            ax_post.set_title(f"Posterior: {label}")
+            ax_post.grid(True, alpha=0.3, axis="y")
+            ax_post.legend(frameon=True, framealpha=0.9)
+
+        plt.tight_layout()
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
         print(f"Diagnostics saved to {save_path}")
         plt.close()
 
     @staticmethod
-    def plot_type_intervals(auctions: List[TaskBAuctionData], true_b_star_S: float,
-                           true_b_star_F: float, estimated_S: float,
-                           estimated_F: float, save_path: str):
-        """Plot type-specific interval bounds.
+    def plot_informal_vs_formal(
+        auctions: List[TaskBAuctionData],
+        *,
+        kappa_est: float,
+        misreporting_mode: str = "scale",
+        save_path: str,
+    ):
+        xs = []
+        ys = []
+        for a in auctions:
+            adm = a.admitted
+            if not np.any(adm):
+                continue
+            xs.append(a.informal_bids[adm])
+            ys.append(a.formal_bids[adm])
+        if not xs:
+            return
 
-        Args:
-            auctions: List of auction data
-            true_b_star_S: True cutoff for type S
-            true_b_star_F: True cutoff for type F
-            estimated_S: Estimated cutoff for type S
-            estimated_F: Estimated cutoff for type F
-            save_path: Path to save the figure
-        """
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+        x = np.concatenate(xs)
+        y = np.concatenate(ys)
 
-        # Type S intervals
-        S_auctions = [a for a in auctions if a.has_S_bounds]
-        S_sorted = sorted(S_auctions, key=lambda a: a.L_S)
+        fig, ax = plt.subplots(figsize=(7, 6))
+        ax.scatter(x, y, s=15, alpha=0.5, color='steelblue', edgecolors='none')
+        ax.set_xlabel('Informal bid (admitted)')
+        ax.set_ylabel('Formal bid')
+        ax.set_title('Admitted bidders: informal vs formal')
+        ax.grid(True, alpha=0.3)
 
-        for i, auction in enumerate(S_sorted):
-            ax1.plot([auction.L_S, auction.U_S], [i, i], 'o-',
-                    color='steelblue', linewidth=2, markersize=5, alpha=0.7)
+        n_ref = int(auctions[0].n_bidders) if auctions else 3
+        lambda_f = 1.0 - 1.0 / float(n_ref)
+        if misreporting_mode == 'scale':
+            slope = 1.0 / float(np.exp(kappa_est))
+            guide_label = f'y = x / exp(kappa) (kappa={kappa_est:.2f})'
+        else:
+            slope = float(lambda_f) / float(np.exp(kappa_est))
+            guide_label = f'y = lambda_f * x / exp(kappa) (kappa={kappa_est:.2f})'
+        xline = np.linspace(float(np.min(x)), float(np.max(x)), 50)
+        ax.plot(
+            xline,
+            slope * xline,
+            color='darkred',
+            linewidth=2,
+            label=guide_label,
+        )
+        ax.legend(frameon=True, framealpha=0.9)
 
-        ax1.axvline(true_b_star_S, color='darkblue', linestyle='--', linewidth=2,
-                   label=f'True b*_S = {true_b_star_S:.3f}', zorder=10)
-        ax1.axvline(estimated_S, color='navy', linestyle='-', linewidth=2,
-                   label=f'Estimated mu_S = {estimated_S:.3f}', zorder=10)
-        ax1.set_xlabel('Bid Value', fontsize=12)
-        ax1.set_ylabel('Auction Index (sorted)', fontsize=12)
-        ax1.set_title(f'Type S: Interval Bounds [L_S, U_S] (N={len(S_sorted)})',
-                     fontsize=13, fontweight='bold')
-        ax1.legend(loc='best', frameon=True, framealpha=0.9)
-        ax1.grid(True, alpha=0.3, axis='x')
-
-        # Type F intervals
-        F_auctions = [a for a in auctions if a.has_F_bounds]
-        F_sorted = sorted(F_auctions, key=lambda a: a.L_F)
-
-        for i, auction in enumerate(F_sorted):
-            ax2.plot([auction.L_F, auction.U_F], [i, i], 'o-',
-                    color='coral', linewidth=2, markersize=5, alpha=0.7)
-
-        ax2.axvline(true_b_star_F, color='darkred', linestyle='--', linewidth=2,
-                   label=f'True b*_F = {true_b_star_F:.3f}', zorder=10)
-        ax2.axvline(estimated_F, color='firebrick', linestyle='-', linewidth=2,
-                   label=f'Estimated mu_F = {estimated_F:.3f}', zorder=10)
-        ax2.set_xlabel('Bid Value', fontsize=12)
-        ax2.set_ylabel('Auction Index (sorted)', fontsize=12)
-        ax2.set_title(f'Type F: Interval Bounds [L_F, U_F] (N={len(F_sorted)})',
-                     fontsize=13, fontweight='bold')
-        ax2.legend(loc='best', frameon=True, framealpha=0.9)
-        ax2.grid(True, alpha=0.3, axis='x')
-
-        plt.tight_layout()
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"Interval plots saved to {save_path}")
+        print(f"Scatter plot saved to {save_path}")
         plt.close()

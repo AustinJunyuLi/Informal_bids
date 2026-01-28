@@ -232,95 +232,214 @@ def task_a_run_chain_intercept(
 
 
 @njit(cache=True)
-def task_b_run_chain_intercept(
-    L_S: np.ndarray,
-    U_S: np.ndarray,
-    L_F: np.ndarray,
-    U_F: np.ndarray,
-    n_iterations: int,
-    mu_S_prior_mean: float,
-    mu_S_prior_std: float,
-    mu_F_prior_mean: float,
-    mu_F_prior_std: float,
-    sigma_prior_a: float,
-    sigma_prior_b: float,
-    mu_S_init: float,
-    mu_F_init: float,
-    sigma_S_init: float,
-    sigma_F_init: float,
-    seed: int,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Task B Gibbs sampler for intercept-only (S and F) cutoff model."""
+def seed_numba_rng(seed: int) -> None:
+    """Seed Numba RNG once per chain."""
     np.random.seed(seed)
 
-    N_S = L_S.shape[0]
-    N_F = L_F.shape[0]
 
-    mu_S = float(mu_S_init)
-    mu_F = float(mu_F_init)
-    sigma_S = float(sigma_S_init)
-    sigma_F = float(sigma_F_init)
+@njit(cache=True)
+def informal_bid_multiplier_numba(n_bidders: int, kappa: float, mode_flag: int) -> float:
+    """Numba version of informal_bid_multiplier with mode flag (0=scale, 1=shift)."""
+    if mode_flag == 0:
+        return (1.0 - 1.0 / float(n_bidders)) * math.exp(kappa)
+    return math.exp(kappa)
 
-    mu_S_chain = np.zeros(n_iterations, dtype=np.float64)
-    mu_F_chain = np.zeros(n_iterations, dtype=np.float64)
-    sigma_S_chain = np.zeros(n_iterations, dtype=np.float64)
-    sigma_F_chain = np.zeros(n_iterations, dtype=np.float64)
 
-    tau_S_sq = float(mu_S_prior_std) ** 2
-    tau_F_sq = float(mu_F_prior_std) ** 2
+@njit(cache=True)
+def selection_prob_reaches_formal_stage_numba(
+    cutoff: float,
+    gamma: float,
+    sigma_nu: float,
+    n_bidders: int,
+    kappa: float,
+    mode_flag: int,
+    eps: float,
+) -> float:
+    lambda_i = informal_bid_multiplier_numba(n_bidders, kappa, mode_flag)
+    z = (cutoff / lambda_i - gamma) / sigma_nu
+    p_below = norm_cdf(z)
+    p_select = 1.0 - (p_below ** n_bidders)
+    if p_select < eps:
+        return eps
+    if p_select > 1.0:
+        return 1.0
+    return p_select
 
-    a_prior = float(sigma_prior_a)
-    b_prior = float(sigma_prior_b)
 
-    nu_S = np.zeros(N_S, dtype=np.float64)
-    nu_F = np.zeros(N_F, dtype=np.float64)
+@njit(cache=True)
+def task_b_update_b_star(
+    b_star: np.ndarray,
+    X: np.ndarray,
+    L: np.ndarray,
+    U: np.ndarray,
+    n_bidders: np.ndarray,
+    beta: np.ndarray,
+    sigma_omega: float,
+    gamma: float,
+    sigma_nu: float,
+    kappa: float,
+    mode_flag: int,
+) -> tuple[int, int]:
+    """Update b_star via independence MH (Task B). Returns (accept_count, total_count)."""
+    N = b_star.shape[0]
+    k = beta.shape[0]
+    accept = 0
+    total = 0
+    eps = 1e-12
 
-    for t in range(n_iterations):
-        # --- Type S ---
-        b_star_S_sum = 0.0
-        for i in range(N_S):
-            a = (L_S[i] - mu_S) / sigma_S
-            b = (U_S[i] - mu_S) / sigma_S
-            nu_i = truncnorm_std_rvs(a, b) * sigma_S
-            nu_S[i] = nu_i
-            b_star_S_sum += mu_S + nu_i
+    for i in range(N):
+        xb = 0.0
+        for j in range(k):
+            xb += X[i, j] * beta[j]
+        a = (L[i] - xb) / sigma_omega
+        b = (U[i] - xb) / sigma_omega
+        b_prop = xb + truncnorm_std_rvs(a, b) * sigma_omega
 
-        tau_S_post_sq = 1.0 / (1.0 / tau_S_sq + N_S / (sigma_S * sigma_S))
-        mu_S_post = tau_S_post_sq * (mu_S_prior_mean / tau_S_sq + b_star_S_sum / (sigma_S * sigma_S))
-        mu_S = mu_S_post + np.random.normal() * math.sqrt(tau_S_post_sq)
+        n = int(n_bidders[i])
+        p_old = selection_prob_reaches_formal_stage_numba(b_star[i], gamma, sigma_nu, n, kappa, mode_flag, eps)
+        p_prop = selection_prob_reaches_formal_stage_numba(b_prop, gamma, sigma_nu, n, kappa, mode_flag, eps)
+        alpha = p_old / p_prop
 
-        a_S_post = a_prior + 0.5 * N_S
-        ss_S = 0.0
-        for i in range(N_S):
-            ss_S += nu_S[i] * nu_S[i]
-        b_S_post = b_prior + 0.5 * ss_S
-        sigma_S_sq = invgamma_rvs(a_S_post, b_S_post)
-        sigma_S = math.sqrt(sigma_S_sq)
+        total += 1
+        if alpha >= 1.0 or np.random.random() < alpha:
+            b_star[i] = b_prop
+            accept += 1
 
-        # --- Type F ---
-        b_star_F_sum = 0.0
-        for i in range(N_F):
-            a = (L_F[i] - mu_F) / sigma_F
-            b = (U_F[i] - mu_F) / sigma_F
-            nu_i = truncnorm_std_rvs(a, b) * sigma_F
-            nu_F[i] = nu_i
-            b_star_F_sum += mu_F + nu_i
+    return accept, total
 
-        tau_F_post_sq = 1.0 / (1.0 / tau_F_sq + N_F / (sigma_F * sigma_F))
-        mu_F_post = tau_F_post_sq * (mu_F_prior_mean / tau_F_sq + b_star_F_sum / (sigma_F * sigma_F))
-        mu_F = mu_F_post + np.random.normal() * math.sqrt(tau_F_post_sq)
 
-        a_F_post = a_prior + 0.5 * N_F
-        ss_F = 0.0
-        for i in range(N_F):
-            ss_F += nu_F[i] * nu_F[i]
-        b_F_post = b_prior + 0.5 * ss_F
-        sigma_F_sq = invgamma_rvs(a_F_post, b_F_post)
-        sigma_F = math.sqrt(sigma_F_sq)
+@njit(cache=True)
+def task_b_logpost_gamma(
+    gamma: float,
+    gamma0: float,
+    s_gamma: float,
+    b_star: np.ndarray,
+    bI: np.ndarray,
+    offsets: np.ndarray,
+    n_bidders: np.ndarray,
+    sigma_nu: float,
+    kappa: float,
+    mode_flag: int,
+) -> float:
+    """Log-posterior for gamma (Task B) with selection penalty."""
+    logp = -0.5 * ((gamma - gamma0) ** 2) / (s_gamma * s_gamma)
+    eps = 1e-12
 
-        mu_S_chain[t] = mu_S
-        mu_F_chain[t] = mu_F
-        sigma_S_chain[t] = sigma_S
-        sigma_F_chain[t] = sigma_F
+    n_auctions = n_bidders.shape[0]
+    for i in range(n_auctions):
+        n = int(n_bidders[i])
+        lambda_i = informal_bid_multiplier_numba(n, kappa, mode_flag)
+        start = int(offsets[i])
+        end = start + n
+        for idx in range(start, end):
+            v = bI[idx] / lambda_i
+            diff = (v - gamma) / sigma_nu
+            logp += -0.5 * diff * diff
+        logp += -float(n) * math.log(sigma_nu)
+        p_select = selection_prob_reaches_formal_stage_numba(
+            b_star[i], gamma, sigma_nu, n, kappa, mode_flag, eps
+        )
+        logp += -math.log(p_select)
+    return logp
 
-    return mu_S_chain, mu_F_chain, sigma_S_chain, sigma_F_chain
+
+@njit(cache=True)
+def task_b_sum_sq_v(
+    bI: np.ndarray,
+    offsets: np.ndarray,
+    n_bidders: np.ndarray,
+    gamma: float,
+    kappa: float,
+    mode_flag: int,
+) -> tuple[float, int]:
+    """Return sum of squared residuals for v = bI/lambda_i around gamma."""
+    ss = 0.0
+    n_v = 0
+    n_auctions = n_bidders.shape[0]
+    for i in range(n_auctions):
+        n = int(n_bidders[i])
+        lambda_i = informal_bid_multiplier_numba(n, kappa, mode_flag)
+        start = int(offsets[i])
+        end = start + n
+        for idx in range(start, end):
+            v = bI[idx] / lambda_i
+            diff = v - gamma
+            ss += diff * diff
+            n_v += 1
+    return ss, n_v
+
+
+@njit(cache=True)
+def task_b_log_selection_sum(
+    b_star: np.ndarray,
+    n_bidders: np.ndarray,
+    gamma: float,
+    sigma_nu: float,
+    kappa: float,
+    mode_flag: int,
+) -> float:
+    """Return sum of log selection probabilities across auctions."""
+    eps = 1e-12
+    total = 0.0
+    n_auctions = n_bidders.shape[0]
+    for i in range(n_auctions):
+        n = int(n_bidders[i])
+        p = selection_prob_reaches_formal_stage_numba(
+            b_star[i], gamma, sigma_nu, n, kappa, mode_flag, eps
+        )
+        total += math.log(p)
+    return total
+
+
+@njit(cache=True)
+def task_b_logpost_kappa(
+    kappa: float,
+    kappa0: float,
+    s_kappa: float,
+    gamma: float,
+    sigma_nu: float,
+    sigma_eta: float,
+    b_star: np.ndarray,
+    bI: np.ndarray,
+    bF: np.ndarray,
+    adm: np.ndarray,
+    offsets: np.ndarray,
+    n_bidders: np.ndarray,
+    lambda_f: np.ndarray,
+    mode_flag: int,
+) -> float:
+    """Log-posterior for kappa (Task B) with selection penalty."""
+    logp = -0.5 * ((kappa - kappa0) ** 2) / (s_kappa * s_kappa) - math.log(s_kappa)
+    eps = 1e-12
+    log2pi = 1.8378770664093453
+
+    n_auctions = n_bidders.shape[0]
+    for i in range(n_auctions):
+        n = int(n_bidders[i])
+        lambda_i = informal_bid_multiplier_numba(n, kappa, mode_flag)
+        start = int(offsets[i])
+        end = start + n
+
+        # Informal bids likelihood (bI)
+        for idx in range(start, end):
+            v = bI[idx] / lambda_i
+            z = (v - gamma) / sigma_nu
+            logp += -0.5 * z * z
+        logp += -float(n) * (math.log(sigma_nu) + math.log(lambda_i) + 0.5 * log2pi)
+
+        # Formal bids likelihood for admitted bidders
+        lf = float(lambda_f[i])
+        for idx in range(start, end):
+            if adm[idx]:
+                v = bI[idx] / lambda_i
+                resid = bF[idx] / lf - v
+                logp += -0.5 * (resid / sigma_eta) * (resid / sigma_eta)
+                logp += -(math.log(sigma_eta) + math.log(lf) + 0.5 * log2pi)
+
+        # Selection penalty
+        p_select = selection_prob_reaches_formal_stage_numba(
+            b_star[i], gamma, sigma_nu, n, kappa, mode_flag, eps
+        )
+        logp += -math.log(p_select)
+
+    return logp

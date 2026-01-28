@@ -22,6 +22,10 @@ task-a-baseline = "informal_bids.cli:task_a_baseline"
 task-b-baseline = "informal_bids.cli:task_b_baseline"
 task-a-sensitivity = "informal_bids.cli:task_a_sensitivity"
 task-b-sensitivity = "informal_bids.cli:task_b_sensitivity"
+task-b-baseline-depth = "informal_bids.cli:task_b_depth_baseline"
+task-b-sensitivity-depth = "informal_bids.cli:task_b_depth_sensitivity"
+task-b-intercept-baseline = "informal_bids.cli:task_b_intercept_baseline"
+task-b-intercept-sensitivity = "informal_bids.cli:task_b_intercept_sensitivity"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
