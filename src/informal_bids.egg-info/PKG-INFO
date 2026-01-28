@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: informal-bids
-Version: 0.2.0
+Version: 0.3.0
 Summary: MCMC estimation for informal bid admission cutoffs in auctions
 Requires-Python: >=3.9
 Description-Content-Type: text/markdown
@@ -11,64 +11,69 @@ Requires-Dist: seaborn
 Requires-Dist: pandas
 Requires-Dist: numba
 
-# Informal Bids
+# Informal Bids (clean-slate refactor)
 
-Simulation and MCMC estimation for informal bid admission cutoffs.
-This repository currently runs **simulation-only** experiments (no real data yet).
+Selection-aware Bayesian estimation for two-stage (informal → formal) M&A auctions.
 
-## Quick start
+This branch (`extend(270126)`) intentionally **restarts the codebase from a clean slate** for a new meeting. The previous implementation is preserved in git history (and on branch `two_stage`).
 
-1) Create/activate a Python environment.
+## Model (Task B)
+
+Per auction `i` with bidders `j=1..J`:
+
+- Valuations: `v_ij = gamma + nu_ij`, `nu_ij ~ N(0, sigma_nu^2)`
+- Informal bids (misreporting): `bI_ij = lambda_I(J,kappa) * v_ij`
+- Cutoff (bid units): `b*_i = X_i' beta + omega_i`, `omega_i ~ N(0, sigma_omega^2)`
+- Admission: bidder admitted iff `bI_ij >= b*_i` (Candidate 3 uses a type shift)
+- Selection: only auctions with at least one admitted bidder are observed
+- Due diligence: `u_ij = v_ij + eta_ij`, `eta_ij ~ N(0, sigma_eta^2)`
+- Formal bids (admitted only): `bF_ij = (1 - 1/J) * u_ij`
+
+Inference uses Metropolis-within-Gibbs with RW-MH for global parameters.
+
+## Cutoff/admission specifications
+
+Specs are registered in `src/informal_bids/specs.py`:
+
+- Legacy baselines:
+  - `legacy_intercept`
+  - `legacy_moments_k4`
+  - `legacy_depth_k2`
+  - `legacy_depth_k2_ratio`
+- New candidates:
+  - `cand1_type_spr`
+  - `cand2_type_spr_depth_z`
+  - `cand3_type_shift_admission`
+  - `cand4_type_spr_prec_z`
+
+## Install
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-2) Install the package in editable mode (recommended for development).
-
-```bash
 pip install -e .
 ```
 
-3) Run baselines
+## Run
+
+Single run (sim + fit):
 
 ```bash
-task-a-baseline
-task-b-baseline
+task-b-run --spec cand1_type_spr --N 100 --seed 123 --out outputs/run_v1
 ```
 
-4) Run sensitivity analyses
+Comparison suite (writes `compare.csv`):
 
 ```bash
-task-a-sensitivity
-task-b-sensitivity
+task-b-compare --out outputs/compare_v1 --N 20,50,100,200 --rep 3 --seed 123
 ```
 
-If you do not want to install the package, you can also run via module path:
+Outputs are written under `outputs/` (keep untracked).
+
+### Performance / quick presets
+
+For faster iteration, reduce MCMC work:
 
 ```bash
-PYTHONPATH=src python -m informal_bids.cli
+task-b-compare --out outputs/compare_fast --N 20,50,100 --rep 1 --iters 4000 --burn 2000 --chains 1
 ```
-
-Outputs are written to `outputs/` by default.
-
-## Structure
-
-```
-src/informal_bids/      # Core package code
-meeting notes/          # Notes and PDFs
-outputs/                # Generated plots/results (not versioned)
-reports/                # Summary reports (not versioned)
-```
-
-## Reproducibility
-
-- Random seeds are set inside each task module.
-- Numba is enabled by default; the first run compiles kernels and may be slower.
-
-## Notes
-
-- Current sampling is conditional on reaching the formal stage (simulation).
-- Incomplete-auction handling is under discussion with supervisor.
